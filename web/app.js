@@ -413,28 +413,49 @@ function render() {
   }
 
   // Highways — light concrete, overlaid on top of all terrain/water.
+  // Both endpoints extend to the nearest map border so traffic visibly
+  // enters and exits the map (visitors come from beyond).
   if (terrain.highways && terrain.highways.length > 0) {
-    ctx.strokeStyle = '#c0c8d4';
+    const bw = terrain.bounds.width, bh = terrain.bounds.height;
+    const toNearestBorder = pt => {
+      const opts = [
+        { x: 0,  y: pt.y, d: pt.x },
+        { x: bw, y: pt.y, d: bw - pt.x },
+        { x: pt.x, y: 0,  d: pt.y },
+        { x: pt.x, y: bh, d: bh - pt.y },
+      ];
+      return opts.reduce((a, b) => a.d < b.d ? a : b);
+    };
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const hw of terrain.highways) {
       const cp = hw.cellPath;
       if (!cp || cp.length < 2) continue;
       const baseW = { narrow: 1.6, medium: 2.6, wide: 4.0 }[hw.width] || 2.6;
-      // Dark outline so it reads against both land and water.
+      const first = cellById.get(cp[0]);
+      const last  = cellById.get(cp[cp.length - 1]);
+      if (!first || !last) continue;
+      const entry = toNearestBorder(first.center);
+      const exit  = toNearestBorder(last.center);
+
+      const trace = () => {
+        ctx.beginPath();
+        ctx.moveTo(entry.x, entry.y);
+        ctx.lineTo(first.center.x, first.center.y);
+        for (let i = 1; i < cp.length; i++) {
+          const c = cellById.get(cp[i]);
+          if (c) ctx.lineTo(c.center.x, c.center.y);
+        }
+        ctx.lineTo(exit.x, exit.y);
+      };
+
       ctx.strokeStyle = '#1c1f26';
       ctx.lineWidth = baseW + 1.4;
-      ctx.beginPath();
-      const c0 = cellById.get(cp[0]);
-      if (c0) ctx.moveTo(c0.center.x, c0.center.y);
-      for (let i = 1; i < cp.length; i++) {
-        const c = cellById.get(cp[i]);
-        if (c) ctx.lineTo(c.center.x, c.center.y);
-      }
+      trace();
       ctx.stroke();
-      // Light fill.
       ctx.strokeStyle = '#c0c8d4';
       ctx.lineWidth = baseW;
+      trace();
       ctx.stroke();
     }
   }
