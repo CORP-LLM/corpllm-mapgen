@@ -537,6 +537,57 @@ func TestRiverMouthTouchesWater(t *testing.T) {
 	}
 }
 
+// TestHighwaysConnectBorders verifies A*-routed highways start at the
+// configured "from" border and end at the configured "to" border.
+func TestHighwaysConnectBorders(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 8; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.HighwaysEnabled = true
+		cfg.Terrain.Highways = []HighwaySpec{
+			{Width: "medium", From: "north", To: "south"},
+			{Width: "wide", From: "west", To: "east"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Highways) == 0 {
+			continue
+		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		const margin = 40.0
+		for _, hw := range tm.Highways {
+			spec := cfg.Terrain.Highways[hw.ID]
+			checkAtBorder := func(p Point, side string) bool {
+				switch side {
+				case "north":
+					return p.Y <= margin
+				case "south":
+					return p.Y >= h-margin
+				case "east":
+					return p.X >= w-margin
+				case "west":
+					return p.X <= margin
+				}
+				return false
+			}
+			if !checkAtBorder(hw.From, spec.From) {
+				t.Errorf("seed %d: highway %d from (%.0f,%.0f) not on %s border",
+					cfg.Seed, hw.ID, hw.From.X, hw.From.Y, spec.From)
+			}
+			if !checkAtBorder(hw.To, spec.To) {
+				t.Errorf("seed %d: highway %d to (%.0f,%.0f) not on %s border",
+					cfg.Seed, hw.ID, hw.To.X, hw.To.Y, spec.To)
+			}
+			if len(hw.CellPath) < 2 {
+				t.Errorf("seed %d: highway %d path too short: %d cells",
+					cfg.Seed, hw.ID, len(hw.CellPath))
+			}
+		}
+	}
+}
+
 // TestCoastNoiseExtremes tests both ends of the coast-noise spectrum.
 func TestCoastNoiseExtremes(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))

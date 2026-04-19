@@ -75,7 +75,14 @@ func Generate(cfg *Config) (*Terrain, error) {
 		}
 	}
 
-	// 9. Coastline extraction.
+	// 9. Highways — A* across the finished cell graph so water and
+	// elevation are known when routing.
+	var highways []Highway
+	if cfg.Terrain.HighwaysEnabled && len(cfg.Terrain.Highways) > 0 {
+		highways = generateHighways(cells, diag, cfg, rng)
+	}
+
+	// 10. Coastline extraction.
 	coastline := extractCoastline(cells, edges)
 
 	id := fmt.Sprintf("t_%08x", rng.Uint32())
@@ -93,6 +100,7 @@ func Generate(cfg *Config) (*Terrain, error) {
 		Edges:     edges,
 		Rivers:    rivers,
 		Lakes:     lakes,
+		Highways:  highways,
 		Coastline: coastline,
 	}, nil
 }

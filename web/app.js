@@ -412,6 +412,33 @@ function render() {
     }
   }
 
+  // Highways — light concrete, overlaid on top of all terrain/water.
+  if (terrain.highways && terrain.highways.length > 0) {
+    ctx.strokeStyle = '#c0c8d4';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const hw of terrain.highways) {
+      const cp = hw.cellPath;
+      if (!cp || cp.length < 2) continue;
+      const baseW = { narrow: 1.6, medium: 2.6, wide: 4.0 }[hw.width] || 2.6;
+      // Dark outline so it reads against both land and water.
+      ctx.strokeStyle = '#1c1f26';
+      ctx.lineWidth = baseW + 1.4;
+      ctx.beginPath();
+      const c0 = cellById.get(cp[0]);
+      if (c0) ctx.moveTo(c0.center.x, c0.center.y);
+      for (let i = 1; i < cp.length; i++) {
+        const c = cellById.get(cp[i]);
+        if (c) ctx.lineTo(c.center.x, c.center.y);
+      }
+      ctx.stroke();
+      // Light fill.
+      ctx.strokeStyle = '#c0c8d4';
+      ctx.lineWidth = baseW;
+      ctx.stroke();
+    }
+  }
+
   // Coastlines
   if (terrain.coastline && terrain.coastline.edges.length > 0) {
     ctx.lineWidth = 1.8 / view.scale;
@@ -574,10 +601,12 @@ function readConfig() {
       coastSide:     el('cfg-coast-side').value,
       coastNoise:    intVal('cfg-coast-noise',  50) / 100,
       waterRatio:    intVal('cfg-water-ratio',  25) / 100,
-      riversEnabled: el('cfg-rivers-en').checked,
-      rivers:        readRiverList(),
-      lakesEnabled:  el('cfg-lakes-en').checked,
-      lakes:         readLakeList(),
+      riversEnabled:   el('cfg-rivers-en').checked,
+      rivers:          readRiverList(),
+      lakesEnabled:    el('cfg-lakes-en').checked,
+      lakes:           readLakeList(),
+      highwaysEnabled: el('cfg-highways-en').checked,
+      highways:        readHighwayList(),
     },
   };
 }
@@ -658,6 +687,25 @@ function addLakeRow(size = 'medium') {
   el('lakes-list').appendChild(row);
 }
 
+function readHighwayList() {
+  const rows = el('highways-list').querySelectorAll('.dyn-row');
+  return Array.from(rows).map(row => ({
+    width: row.querySelector('.highway-width').value,
+    from:  row.querySelector('.highway-from').value,
+    to:    row.querySelector('.highway-to').value,
+  }));
+}
+
+function addHighwayRow(width = 'medium', from = 'north', to = 'south') {
+  const tpl = el('highway-row-template');
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  row.querySelector('.highway-width').value = width;
+  row.querySelector('.highway-from').value = from;
+  row.querySelector('.highway-to').value = to;
+  row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+  el('highways-list').appendChild(row);
+}
+
 // ── Import / Export ───────────────────────────────────────────────────────────
 function exportJSON() {
   if (!terrain) { alert('No terrain loaded.'); return; }
@@ -720,6 +768,7 @@ el('btn-import').addEventListener('click', () => el('file-input').click());
 
 el('btn-add-river').addEventListener('click', () => addRiverRow());
 el('btn-add-lake').addEventListener('click', () => addLakeRow());
+el('btn-add-highway').addEventListener('click', () => addHighwayRow());
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
@@ -757,9 +806,10 @@ function init() {
     if (terrain) render();
   });
 
-  bindToggle('cfg-coast-en',  'coast-opts');
-  bindToggle('cfg-rivers-en', 'rivers-opts');
-  bindToggle('cfg-lakes-en',  'lakes-opts');
+  bindToggle('cfg-coast-en',    'coast-opts');
+  bindToggle('cfg-rivers-en',   'rivers-opts');
+  bindToggle('cfg-lakes-en',    'lakes-opts');
+  bindToggle('cfg-highways-en', 'highways-opts');
 
   // Default river / lake configuration: 3 rivers, 5 lakes.
   for (let i = 0; i < 3; i++) addRiverRow();

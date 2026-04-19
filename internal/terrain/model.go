@@ -56,6 +56,16 @@ type Coastline struct {
 	Length int   `json:"length"`
 }
 
+// Highway is a cell path connecting two map borders.
+// A* routed with penalties for elevation change and water crossings.
+type Highway struct {
+	ID       int    `json:"id"`
+	CellPath []int  `json:"cellPath"`
+	From     Point  `json:"from"`
+	To       Point  `json:"to"`
+	Width    string `json:"width"`
+}
+
 // Bounds is the map rectangle.
 type Bounds struct {
 	Width  int `json:"width"`
@@ -80,5 +90,6 @@ type Terrain struct {
 	Edges     []Edge    `json:"edges"`
 	Rivers    []River   `json:"rivers"`
 	Lakes     []Lake    `json:"lakes"`
+	Highways  []Highway `json:"highways"`
 	Coastline Coastline `json:"coastline"`
 }

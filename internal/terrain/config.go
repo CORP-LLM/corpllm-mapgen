@@ -18,16 +18,26 @@ type LakeSpec struct {
 	Size string `json:"size"` // "small", "medium", "large"
 }
 
+// HighwaySpec defines one highway: which borders it enters / exits and
+// its visual width. Width is purely cosmetic; routing is A* based.
+type HighwaySpec struct {
+	Width string `json:"width"` // "narrow", "medium", "wide"
+	From  string `json:"from"`  // "north", "south", "east", "west"
+	To    string `json:"to"`    // same enum; must differ from From
+}
+
 // TerrainConfig holds feature-flag parameters.
 type TerrainConfig struct {
-	CoastEnabled  bool        `json:"coastEnabled"`
-	CoastSide     string      `json:"coastSide"`
-	CoastNoise    float64     `json:"coastNoise"`
-	WaterRatio    float64     `json:"waterRatio"`
-	RiversEnabled bool        `json:"riversEnabled"`
-	Rivers        []RiverSpec `json:"rivers"`
-	LakesEnabled  bool        `json:"lakesEnabled"`
-	Lakes         []LakeSpec  `json:"lakes"`
+	CoastEnabled    bool          `json:"coastEnabled"`
+	CoastSide       string        `json:"coastSide"`
+	CoastNoise      float64       `json:"coastNoise"`
+	WaterRatio      float64       `json:"waterRatio"`
+	RiversEnabled   bool          `json:"riversEnabled"`
+	Rivers          []RiverSpec   `json:"rivers"`
+	LakesEnabled    bool          `json:"lakesEnabled"`
+	Lakes           []LakeSpec    `json:"lakes"`
+	HighwaysEnabled bool          `json:"highwaysEnabled"`
+	Highways        []HighwaySpec `json:"highways"`
 }
 
 // Config is the full generation config (input JSON).
@@ -69,6 +79,18 @@ func (c *Config) Defaults() {
 	for i := range c.Terrain.Lakes {
 		if c.Terrain.Lakes[i].Size == "" {
 			c.Terrain.Lakes[i].Size = "medium"
+		}
+	}
+	for i := range c.Terrain.Highways {
+		h := &c.Terrain.Highways[i]
+		if h.Width == "" {
+			h.Width = "medium"
+		}
+		if h.From == "" {
+			h.From = "north"
+		}
+		if h.To == "" {
+			h.To = "south"
 		}
 	}
 }
@@ -128,6 +150,24 @@ func (c *Config) Validate() error {
 	for _, l := range t.Lakes {
 		if l.Size != "" && !validSizes[l.Size] {
 			return errors.New("lake size must be small/medium/large")
+		}
+	}
+	if len(t.Highways) > 15 {
+		return errors.New("at most 15 highways allowed")
+	}
+	validSides4 := map[string]bool{"north": true, "south": true, "east": true, "west": true}
+	for _, hw := range t.Highways {
+		if hw.Width != "" && !validWidths[hw.Width] {
+			return errors.New("highway width must be narrow/medium/wide")
+		}
+		if hw.From != "" && !validSides4[hw.From] {
+			return errors.New("highway from must be north/south/east/west")
+		}
+		if hw.To != "" && !validSides4[hw.To] {
+			return errors.New("highway to must be north/south/east/west")
+		}
+		if hw.From != "" && hw.To != "" && hw.From == hw.To {
+			return errors.New("highway from and to must differ")
 		}
 	}
 	return nil
