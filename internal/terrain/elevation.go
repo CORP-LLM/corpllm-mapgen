@@ -37,11 +37,15 @@ func assignElevation(cells []Cell, cfg *Config) {
 			gradient = 0.5
 		}
 
-		// Large-scale mountain ranges + small-scale detail.
-		mountains := pn.Eval01(cx/w*3, cy/h*3)
-		detail := pn.Eval01(cx/w*8, cy/h*8)
-
-		elev := gradient*0.55 + mountains*0.35 + detail*0.10
+		// Large-scale mountain ranges + small-scale detail. Both are scaled
+		// by Roughness so the user can flatten the map: at 0 the terrain is
+		// just a smooth coast-distance ramp, at 1 it has full hilly relief.
+		r := cfg.Terrain.Roughness
+		mountains := pn.Eval01(cx/w*3, cy/h*3) * r
+		detail := pn.Eval01(cx/w*8, cy/h*8) * r
+		// Re-normalize so total stays in [0,1] regardless of r.
+		gradWeight := 1.0 - (0.35+0.10)*r
+		elev := gradient*gradWeight + mountains*0.35 + detail*0.10
 		if elev < 0 {
 			elev = 0
 		}

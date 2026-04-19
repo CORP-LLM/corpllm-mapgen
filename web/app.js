@@ -377,9 +377,23 @@ function render() {
   }
 
   // River flow overlay — thin at source, wider at mouth (flow accumulation).
-  // A small "spring" dot marks each source so short rivers don't look like
-  // they appear out of nowhere when zoomed in.
+  // Border-origin sources extend to the map edge (river enters from beyond
+  // the map) — inland sources get a spring dot.
   if (terrain.rivers && terrain.rivers.length > 0) {
+    const bw = terrain.bounds.width, bh = terrain.bounds.height;
+    const BORDER_M = 40;
+    const atMapBorder = p =>
+      p.x <= BORDER_M || p.x >= bw - BORDER_M || p.y <= BORDER_M || p.y >= bh - BORDER_M;
+    const nearestBorder = p => {
+      const opts = [
+        { x: 0,  y: p.y, d: p.x },
+        { x: bw, y: p.y, d: bw - p.x },
+        { x: p.x, y: 0,  d: p.y },
+        { x: p.x, y: bh, d: bh - p.y },
+      ];
+      return opts.reduce((a, b) => a.d < b.d ? a : b);
+    };
+
     ctx.strokeStyle = '#2e7aa8';
     ctx.fillStyle = '#3a8fc0';
     ctx.lineCap = 'round';
@@ -388,10 +402,20 @@ function render() {
       const cp = river.cellPath;
       if (!cp || cp.length < 2) continue;
       const baseW = { narrow: 2.5, medium: 4.5, wide: 8 }[river.width] || 4.5;
-
-      // Source marker: dot at the first cell's center, ≈ 0.8× source stroke.
       const src = cellById.get(cp[0]);
-      if (src) {
+      if (!src) continue;
+      const borderOrigin = atMapBorder(src.center);
+
+      if (borderOrigin) {
+        // Stroke out to the map edge at the source width.
+        const entry = nearestBorder(src.center);
+        ctx.lineWidth = baseW * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(entry.x, entry.y);
+        ctx.lineTo(src.center.x, src.center.y);
+        ctx.stroke();
+      } else {
+        // Spring dot marks an inland source.
         ctx.beginPath();
         ctx.arc(src.center.x, src.center.y, baseW * 0.45, 0, Math.PI * 2);
         ctx.fill();
@@ -630,6 +654,7 @@ function readConfig() {
       coastSide:     el('cfg-coast-side').value,
       coastNoise:    intVal('cfg-coast-noise',  50) / 100,
       waterRatio:    intVal('cfg-water-ratio',  25) / 100,
+      roughness:     intVal('cfg-roughness',   100) / 100,
       riversEnabled:   el('cfg-rivers-en').checked,
       rivers:          readRiverList(),
       lakesEnabled:    el('cfg-lakes-en').checked,
@@ -803,6 +828,7 @@ function init() {
   bindRange('cfg-relax',       'cfg-relax-val');
   bindRange('cfg-coast-noise', 'cfg-coast-noise-val', v => (v / 100).toFixed(2));
   bindRange('cfg-water-ratio', 'cfg-water-ratio-val', v => v + '%');
+  bindRange('cfg-roughness',   'cfg-roughness-val',   v => v + '%');
   bindRange('cfg-subdiv',      'cfg-subdiv-val');
   bindRange('cfg-wiggle',      'cfg-wiggle-val');
 

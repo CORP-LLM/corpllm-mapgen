@@ -28,10 +28,13 @@ type HighwaySpec struct {
 
 // TerrainConfig holds feature-flag parameters.
 type TerrainConfig struct {
-	CoastEnabled    bool          `json:"coastEnabled"`
-	CoastSide       string        `json:"coastSide"`
-	CoastNoise      float64       `json:"coastNoise"`
-	WaterRatio      float64       `json:"waterRatio"`
+	CoastEnabled bool    `json:"coastEnabled"`
+	CoastSide    string  `json:"coastSide"`
+	CoastNoise   float64 `json:"coastNoise"`
+	WaterRatio   float64 `json:"waterRatio"`
+	// Roughness 0.0–1.0 scales Perlin noise on top of the coast-distance
+	// gradient. 0 = flat (smooth ramp only, no hills). 1 = full noise.
+	Roughness       float64       `json:"roughness"`
 	RiversEnabled   bool          `json:"riversEnabled"`
 	Rivers          []RiverSpec   `json:"rivers"`
 	LakesEnabled    bool          `json:"lakesEnabled"`
@@ -63,6 +66,9 @@ func (c *Config) Defaults() {
 	}
 	if c.Terrain.CoastSide == "" {
 		c.Terrain.CoastSide = "south"
+	}
+	if c.Terrain.Roughness <= 0 {
+		c.Terrain.Roughness = 1.0 // missing → default hilly
 	}
 	for i := range c.Terrain.Rivers {
 		r := &c.Terrain.Rivers[i]
@@ -116,6 +122,9 @@ func (c *Config) Validate() error {
 	}
 	if t.WaterRatio < 0 || t.WaterRatio > 1 {
 		return errors.New("waterRatio must be 0.0–1.0")
+	}
+	if t.Roughness < 0 || t.Roughness > 1 {
+		return errors.New("roughness must be 0.0–1.0")
 	}
 	if len(t.Rivers) > 20 {
 		return errors.New("at most 20 rivers allowed")

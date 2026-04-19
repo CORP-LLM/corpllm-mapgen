@@ -254,7 +254,9 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 	// Straightness and meander need similar magnitudes to actually affect choice.
 	const elevScale = 3000.0
 	const uphillExtra = 6000.0
-	alignWeight := spec.Straightness * maxDim * 0.6 // up to ~600 at max straight
+	// At max straightness, alignWeight must dominate the elevation term so
+	// concrete canals actually look concrete — humans dig through terrain.
+	alignWeight := spec.Straightness * maxDim * 3.0 // up to ~3000 at max straight
 	meanderWeight := spec.Meander * 500             // up to ±500 random swing
 
 	for step := 0; step < maxSteps; step++ {
