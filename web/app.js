@@ -377,22 +377,32 @@ function render() {
   }
 
   // River flow overlay — thin at source, wider at mouth (flow accumulation).
-  // Traces a smooth polyline through cell centers on top of the river cells,
-  // so rivers visibly widen toward the sea/lake.
+  // A small "spring" dot marks each source so short rivers don't look like
+  // they appear out of nowhere when zoomed in.
   if (terrain.rivers && terrain.rivers.length > 0) {
     ctx.strokeStyle = '#2e7aa8';
+    ctx.fillStyle = '#3a8fc0';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const river of terrain.rivers) {
       const cp = river.cellPath;
       if (!cp || cp.length < 2) continue;
       const baseW = { narrow: 2.5, medium: 4.5, wide: 8 }[river.width] || 4.5;
+
+      // Source marker: dot at the first cell's center, ≈ 0.8× source stroke.
+      const src = cellById.get(cp[0]);
+      if (src) {
+        ctx.beginPath();
+        ctx.arc(src.center.x, src.center.y, baseW * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       for (let i = 0; i < cp.length - 1; i++) {
         const ca = cellById.get(cp[i]);
         const cb = cellById.get(cp[i + 1]);
         if (!ca || !cb) continue;
-        // Flow 0..1 along the path; min 0.25 so the source isn't invisible.
-        const flow = 0.25 + 0.75 * ((i + 1) / cp.length);
+        // Flow 0..1 along the path; min 0.4 so the source is legible.
+        const flow = 0.4 + 0.6 * ((i + 1) / cp.length);
         ctx.lineWidth = baseW * flow;
         ctx.beginPath();
         ctx.moveTo(ca.center.x, ca.center.y);
