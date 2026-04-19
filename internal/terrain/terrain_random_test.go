@@ -459,6 +459,78 @@ func TestLakeSizesHonored(t *testing.T) {
 	}
 }
 
+// TestCellVerticesInsideBounds guarantees all cell vertices stay inside the
+// map rectangle — front-end rendering relies on this to keep the map border
+// crisp even with subdivision wiggle.
+func TestCellVerticesInsideBounds(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		for _, c := range tm.Cells {
+			for _, v := range c.Vertices {
+				if v.X < -1 || v.X > w+1 || v.Y < -1 || v.Y > h+1 {
+					t.Errorf("seed %d: cell %d vertex (%.2f,%.2f) outside map bounds",
+						cfg.Seed, c.ID, v.X, v.Y)
+				}
+			}
+		}
+	}
+}
+
+// TestRiverMouthTouchesWater guarantees every river's mouth cell is water
+// (coast or lake) OR the cell touches the map border (end=offmap). Rivers
+// must have a hydrological terminus — they never dead-end on dry land.
+func TestRiverMouthTouchesWater(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 15; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		cellByID := make(map[int]*Cell, len(tm.Cells))
+		for j := range tm.Cells {
+			cellByID[tm.Cells[j].ID] = &tm.Cells[j]
+		}
+		for ri, rv := range tm.Rivers {
+			if len(rv.Path) == 0 {
+				t.Errorf("seed %d: river %d has empty path", cfg.Seed, ri)
+				continue
+			}
+			// Find the mouth cell via the last edge.
+			last := tm.Edges[rv.Path[len(rv.Path)-1]]
+			a, b := cellByID[last.Cells[0]], cellByID[last.Cells[1]]
+			// Mouth is the non-river water OR border cell at the end.
+			endSpec := cfg.Terrain.Rivers[rv.ID].End
+			good := false
+			for _, c := range []*Cell{a, b} {
+				if c == nil {
+					continue
+				}
+				if c.Terrain == "water" {
+					good = true
+				}
+				if endSpec == "offmap" {
+					for _, v := range c.Vertices {
+						if v.X <= 2 || v.X >= w-2 || v.Y <= 2 || v.Y >= h-2 {
+							good = true
+						}
+					}
+				}
+			}
+			if !good {
+				t.Errorf("seed %d: river %d mouth does not touch water or map border", cfg.Seed, ri)
+			}
+		}
+	}
+}
+
 // TestCoastNoiseExtremes tests both ends of the coast-noise spectrum.
 func TestCoastNoiseExtremes(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))

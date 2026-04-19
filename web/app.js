@@ -66,6 +66,16 @@ function subdividedEdge(a, b) {
   const dx = v2.x - v1.x, dy = v2.y - v1.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.5 || render_.subdiv < 2) return reversed ? [b, a] : [a, b];
+
+  // Detect map-border edges: if both endpoints sit on a map boundary, keep
+  // the edge straight. Otherwise wiggle pushes cells outside the map.
+  const bw = terrain ? terrain.bounds.width : Infinity;
+  const bh = terrain ? terrain.bounds.height : Infinity;
+  const m = 1.5;
+  const atBorderA = v1.x <= m || v1.x >= bw - m || v1.y <= m || v1.y >= bh - m;
+  const atBorderB = v2.x <= m || v2.x >= bw - m || v2.y <= m || v2.y >= bh - m;
+  if (atBorderA && atBorderB) return reversed ? [b, a] : [a, b];
+
   const px = -dy / len, py = dx / len;
   const pts = [v1];
   for (let k = 1; k < render_.subdiv; k++) {
@@ -182,14 +192,21 @@ function render() {
     }
     ctx.stroke();
 
-    // river cell borders
+    // river cell borders — draw only river↔river or river↔land.
+    // River↔lake / river↔coast-water is skipped so the mouth blends seamlessly
+    // into the receiving water body (both are water — no visual fence).
     ctx.beginPath();
     ctx.strokeStyle = C.riverEdge;
     for (const e of terrain.edges) {
       if (e.coastline) continue;
       const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
       if (!ca || !cb) continue;
-      if (!ca.river && !cb.river) continue;
+      const aRiver = ca.river, bRiver = cb.river;
+      if (!aRiver && !bRiver) continue;
+      // If one side is river and the other is non-river water → skip (blend).
+      const aIsOtherWater = !aRiver && ca.terrain === 'water';
+      const bIsOtherWater = !bRiver && cb.terrain === 'water';
+      if (aIsOtherWater || bIsOtherWater) continue;
       pathPolyline(smoothedEdges.get(e.id));
     }
     ctx.stroke();
