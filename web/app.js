@@ -83,13 +83,17 @@ function hexRgb(hex) {
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
-// Land: dark green (low) → olive → khaki → warm peaks.
+// Land: lush lowland → bright grassland → olive hills → warm mountain
+// tan → near-white peaks. More saturated stops so biome variation reads
+// at low zoom instead of blurring into olive.
 function landRgb(elev) {
   return stopRgb(elev, [
-    { t: 0.00, r:  22, g:  48, b:  22 },
-    { t: 0.45, r:  58, g:  72, b:  38 },
-    { t: 0.80, r:  96, g:  92, b:  62 },
-    { t: 1.00, r: 150, g: 138, b: 110 },
+    { t: 0.00, r:  34, g:  72, b:  30 },  // forest floor
+    { t: 0.25, r:  76, g: 108, b:  40 },  // bright grassland
+    { t: 0.50, r: 128, g: 116, b:  48 },  // olive hills
+    { t: 0.75, r: 156, g: 118, b:  78 },  // warm mountain
+    { t: 0.92, r: 190, g: 170, b: 140 },  // bare rock
+    { t: 1.00, r: 230, g: 226, b: 214 },  // snow
   ]);
 }
 
@@ -293,9 +297,10 @@ function render() {
     } else if (cell.terrain === 'land') {
       rgb = landRgb(cell.elevation || 0);
       if (render_.hillshade) {
-        // Shade ∈ [-0.15, 0.15] after clamp; ×4 gives brightness ≈ [0.4, 1.6].
+        // Shade ∈ [-0.15, 0.15] after clamp; ×7 gives brightness ≈ [0, 2.0],
+        // stronger than before so terrain relief is visible at low zoom.
         const s = cellShade.get(cell.id) || 0;
-        rgb = mulRgb(rgb, 1 + s * 4);
+        rgb = mulRgb(rgb, 1 + s * 7);
       }
     } else if (lakeCellSet.has(cell.id)) {
       rgb = hexRgb(C.lake);
@@ -327,9 +332,10 @@ function render() {
     }
     ctx.stroke();
 
-    // river cell borders — draw only river↔river or river↔land.
-    // River↔lake / river↔coast-water is skipped so the mouth blends seamlessly
-    // into the receiving water body (both are water — no visual fence).
+    // River cell borders — draw ONLY where a river cell meets a LAND cell,
+    // so the river reads as one continuous flowing body instead of a chain
+    // of segmented cells. River↔river = invisible (merged look). River↔
+    // lake/coast = invisible (mouth blends into the receiving water).
     ctx.beginPath();
     ctx.strokeStyle = C.riverEdge;
     for (const e of terrain.edges) {
@@ -337,11 +343,9 @@ function render() {
       const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
       if (!ca || !cb) continue;
       const aRiver = ca.river, bRiver = cb.river;
-      if (!aRiver && !bRiver) continue;
-      // If one side is river and the other is non-river water → skip (blend).
-      const aIsOtherWater = !aRiver && ca.terrain === 'water';
-      const bIsOtherWater = !bRiver && cb.terrain === 'water';
-      if (aIsOtherWater || bIsOtherWater) continue;
+      if (aRiver === bRiver) continue; // both river (segmented look) or both not → skip
+      const other = aRiver ? cb : ca;
+      if (other.terrain !== 'land') continue; // skip river↔water blends
       pathPolyline(smoothedEdges.get(e.id));
     }
     ctx.stroke();
