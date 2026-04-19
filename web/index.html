@@ -83,6 +83,16 @@
             <input type="checkbox" id="cfg-smooth-curves"> Smooth curves
           </label>
         </div>
+        <div class="field" title="Simulated NW sunlight on land cells — makes elevation visibly plastic, like a relief map">
+          <label class="toggle-label" style="width:auto;flex:1">
+            <input type="checkbox" id="cfg-hillshade" checked> Hillshade
+          </label>
+        </div>
+        <div class="field" title="Draw a contour line wherever the elevation crosses a 0.1 step — classic topographic map look">
+          <label class="toggle-label" style="width:auto;flex:1">
+            <input type="checkbox" id="cfg-contours"> Contour lines
+          </label>
+        </div>
         <div class="field" title="Subdivisions per edge — higher = smoother organic look (recompute on change)">
           <label>Subdiv</label>
           <input type="range" id="cfg-subdiv" min="1" max="10" value="6">

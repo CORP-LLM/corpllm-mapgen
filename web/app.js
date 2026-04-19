@@ -13,6 +13,8 @@ const render_ = {
   amount:       0.12,  // perpendicular offset as fraction of edge length
   showEdges:    true,
   smoothCurves: false,
+  hillshade:    true,  // simulated NW lighting on land cells
+  contours:     false, // every-0.1 elevation contour lines
 };
 const view = { x: 0, y: 0, scale: 1 };
 let dragging = false;
@@ -47,25 +49,43 @@ const C = {
   coast:      '#3a9ab8',
 };
 
-// Interpolate a color from a list of elevation stops.
-function stopColor(t, stops) {
+// Interpolate an [r,g,b] color from a list of stops.
+function stopRgb(t, stops) {
   t = Math.max(stops[0].t, Math.min(stops[stops.length - 1].t, t));
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i], b = stops[i + 1];
     if (t >= a.t && t <= b.t) {
       const k = (t - a.t) / (b.t - a.t);
-      const r  = Math.round(a.r + (b.r - a.r) * k);
-      const g  = Math.round(a.g + (b.g - a.g) * k);
-      const bl = Math.round(a.b + (b.b - a.b) * k);
-      return `rgb(${r},${g},${bl})`;
+      return [
+        a.r + (b.r - a.r) * k,
+        a.g + (b.g - a.g) * k,
+        a.b + (b.b - a.b) * k,
+      ];
     }
   }
-  return `rgb(${stops[0].r},${stops[0].g},${stops[0].b})`;
+  return [stops[0].r, stops[0].g, stops[0].b];
+}
+
+function rgbToCss(rgb) {
+  return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`;
+}
+
+function mulRgb(rgb, k) {
+  return [
+    Math.max(0, Math.min(255, rgb[0] * k)),
+    Math.max(0, Math.min(255, rgb[1] * k)),
+    Math.max(0, Math.min(255, rgb[2] * k)),
+  ];
+}
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
 // Land: dark green (low) → olive → khaki → warm peaks.
-function landColor(elev) {
-  return stopColor(elev, [
+function landRgb(elev) {
+  return stopRgb(elev, [
     { t: 0.00, r:  22, g:  48, b:  22 },
     { t: 0.45, r:  58, g:  72, b:  38 },
     { t: 0.80, r:  96, g:  92, b:  62 },
@@ -73,15 +93,55 @@ function landColor(elev) {
   ]);
 }
 
-// Water depth: shallow (near land) is a brighter teal, deep ocean is near-black.
-// elev is negative for water: 0 = at the coast, -1 = deepest.
-function waterColor(elev) {
+// Water depth: shallow (near land) is brighter teal, deep ocean is near-black.
+function waterRgb(elev) {
   const d = Math.max(0, Math.min(1, -elev));
-  return stopColor(d, [
-    { t: 0.00, r: 32, g: 74, b: 96 },   // shallow teal
-    { t: 0.40, r: 16, g: 42, b: 66 },   // mid blue
-    { t: 1.00, r:  5, g: 14, b: 28 },   // deep almost-black
+  return stopRgb(d, [
+    { t: 0.00, r: 32, g: 74, b: 96 },
+    { t: 0.40, r: 16, g: 42, b: 66 },
+    { t: 1.00, r:  5, g: 14, b: 28 },
   ]);
+}
+
+// ── Hillshade ────────────────────────────────────────────────────────────────
+// For each land cell, average the elevation-weighted displacement vectors to
+// its neighbors to get a slope vector (points uphill). Dot with the incoming
+// light direction to get a shading factor ∈ roughly [-0.08, 0.08]. Applied as
+// a multiplicative brightness when rendering cell fills.
+const cellShade = new Map();
+
+function computeHillshade() {
+  cellShade.clear();
+  if (!terrain) return;
+  // Toward-source direction for NW light = pointing NW = (-, -).
+  // A slope whose uphill direction points toward the light is bright.
+  const sourceX = -Math.SQRT1_2, sourceY = -Math.SQRT1_2;
+  for (const c of terrain.cells) {
+    if (c.terrain !== 'land') {
+      cellShade.set(c.id, 0);
+      continue;
+    }
+    let sx = 0, sy = 0, n = 0;
+    for (const nbId of c.neighbors) {
+      const nb = cellById.get(nbId);
+      if (!nb || nb.terrain !== 'land') continue; // ignore coast drop-offs
+      const dx = nb.center.x - c.center.x;
+      const dy = nb.center.y - c.center.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) continue;
+      const dElev = (nb.elevation || 0) - (c.elevation || 0);
+      sx += (dx / len) * dElev;
+      sy += (dy / len) * dElev;
+      n++;
+    }
+    if (n > 0) { sx /= n; sy /= n; }
+    // dot(slope_uphill, toward_source): + when facing light, − when in shadow.
+    let shade = sx * sourceX + sy * sourceY;
+    // Clamp to reasonable range so a single steep cell doesn't blow out.
+    if (shade > 0.15) shade = 0.15;
+    if (shade < -0.15) shade = -0.15;
+    cellShade.set(c.id, shade);
+  }
 }
 
 // ── Organic smoothing ─────────────────────────────────────────────────────────
@@ -227,15 +287,22 @@ function render() {
       pathPolyline(poly);
       ctx.closePath();
     }
+    let rgb;
     if (cell.river) {
-      ctx.fillStyle = C.riverCell;
+      rgb = hexRgb(C.riverCell);
     } else if (cell.terrain === 'land') {
-      ctx.fillStyle = landColor(cell.elevation || 0);
+      rgb = landRgb(cell.elevation || 0);
+      if (render_.hillshade) {
+        // Shade ∈ [-0.15, 0.15] after clamp; ×4 gives brightness ≈ [0.4, 1.6].
+        const s = cellShade.get(cell.id) || 0;
+        rgb = mulRgb(rgb, 1 + s * 4);
+      }
     } else if (lakeCellSet.has(cell.id)) {
-      ctx.fillStyle = C.lake;
+      rgb = hexRgb(C.lake);
     } else {
-      ctx.fillStyle = waterColor(cell.elevation || 0);
+      rgb = waterRgb(cell.elevation || 0);
     }
+    ctx.fillStyle = rgbToCss(rgb);
     ctx.fill();
   }
 
@@ -281,6 +348,30 @@ function render() {
       const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
       if (ca && ca.river || cb && cb.river) continue;
       pathPolyline(smoothedEdges.get(e.id));
+    }
+    ctx.stroke();
+  }
+
+  // Contour lines — draw any cell-edge that straddles a 0.1 elevation level.
+  // Topo map look; fine-grained detail on mountains and valleys.
+  if (render_.contours) {
+    ctx.strokeStyle = 'rgba(18, 14, 8, 0.55)';
+    ctx.lineWidth = 0.6 / view.scale;
+    const levels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    ctx.beginPath();
+    for (const edge of terrain.edges) {
+      const ca = cellById.get(edge.cells[0]);
+      const cb = cellById.get(edge.cells[1]);
+      if (!ca || !cb) continue;
+      if (ca.terrain !== 'land' || cb.terrain !== 'land') continue;
+      const ea = ca.elevation || 0, eb = cb.elevation || 0;
+      for (const lv of levels) {
+        if ((ea < lv) !== (eb < lv)) {
+          const pts = smoothedEdges.get(edge.id);
+          if (pts) pathPolyline(pts);
+          break;
+        }
+      }
     }
     ctx.stroke();
   }
@@ -454,6 +545,7 @@ function loadTerrain(t) {
   edgeById  = new Map((t.edges || []).map(e => [e.id, e]));
   cellById  = new Map((t.cells || []).map(c => [c.id, c]));
   preprocessSmooth();
+  computeHillshade();
   showEmpty(false);
   fitView();
   render();
@@ -644,6 +736,14 @@ function init() {
   });
   el('cfg-smooth-curves').addEventListener('change', () => {
     render_.smoothCurves = el('cfg-smooth-curves').checked;
+    if (terrain) render();
+  });
+  el('cfg-hillshade').addEventListener('change', () => {
+    render_.hillshade = el('cfg-hillshade').checked;
+    if (terrain) render();
+  });
+  el('cfg-contours').addEventListener('change', () => {
+    render_.contours = el('cfg-contours').checked;
     if (terrain) render();
   });
 
