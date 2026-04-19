@@ -64,3 +64,49 @@ func cellCenters(cells []Cell, ids []int) []Point {
 	}
 	return out
 }
+
+// nearBorder reports whether p sits within margin of the map rectangle edge.
+func nearBorder(p Point, w, h, margin float64) bool {
+	return p.X <= margin || p.X >= w-margin ||
+		p.Y <= margin || p.Y >= h-margin
+}
+
+// projectToBorder returns p snapped onto the nearest map border (perpendicular
+// foot). Used to extend river/highway curves out to the map edge so the
+// geometry visibly enters/exits the world.
+func projectToBorder(p Point, w, h float64) Point {
+	type opt struct{ x, y, d float64 }
+	cands := [4]opt{
+		{0, p.Y, p.X},
+		{w, p.Y, w - p.X},
+		{p.X, 0, p.Y},
+		{p.X, h, h - p.Y},
+	}
+	best := cands[0]
+	for _, c := range cands[1:] {
+		if c.d < best.d {
+			best = c
+		}
+	}
+	return Point{X: best.x, Y: best.y}
+}
+
+// extendAtBorder prepends a border projection before centers[0] if that cell
+// sits near a map edge, and appends one after the last cell similarly.
+// Disabled ends are controlled by prepend/append flags so rivers (source only)
+// and highways (both ends) can share the same helper.
+func extendAtBorder(centers []Point, w, h float64, prepend, appendEnd bool) []Point {
+	const borderMargin = 40.0
+	if len(centers) < 2 {
+		return centers
+	}
+	out := make([]Point, 0, len(centers)+2)
+	if prepend && nearBorder(centers[0], w, h, borderMargin) {
+		out = append(out, projectToBorder(centers[0], w, h))
+	}
+	out = append(out, centers...)
+	if appendEnd && nearBorder(centers[len(centers)-1], w, h, borderMargin) {
+		out = append(out, projectToBorder(centers[len(centers)-1], w, h))
+	}
+	return out
+}

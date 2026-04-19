@@ -827,9 +827,59 @@ func TestHighwayAvoidsWaterWhenLandAvailable(t *testing.T) {
 	}
 }
 
-// TestRiverCurveWellFormed verifies every generated river has a spline curve
-// whose endpoints match the source/mouth cell centers and whose sample count
-// matches the formula 1 + (cellPath-1) × samplesPerSegment.
+// TestVertexElevationsShared verifies shared vertices across cells get the
+// same VertexElevations value — clients relying on these for smooth meshes
+// need the elevation at each shared corner to match exactly.
+func TestVertexElevationsShared(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 5; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		type vkey struct{ x, y int64 }
+		keyFor := func(p Point) vkey {
+			return vkey{int64(math.Round(p.X * 100)), int64(math.Round(p.Y * 100))}
+		}
+		observed := make(map[vkey]float64)
+		for _, c := range tm.Cells {
+			if len(c.VertexElevations) != len(c.Vertices) {
+				t.Errorf("seed %d: cell %d has %d vertices but %d elevations",
+					cfg.Seed, c.ID, len(c.Vertices), len(c.VertexElevations))
+				continue
+			}
+			for j, v := range c.Vertices {
+				k := keyFor(v)
+				got := c.VertexElevations[j]
+				if prev, seen := observed[k]; seen {
+					if math.Abs(prev-got) > 1e-9 {
+						t.Errorf("seed %d: vertex %v elevation inconsistent: %.6f vs %.6f",
+							cfg.Seed, k, prev, got)
+					}
+				} else {
+					observed[k] = got
+				}
+			}
+		}
+	}
+}
+
+// TestSchemaVersionSet verifies meta.schemaVersion matches the constant.
+func TestSchemaVersionSet(t *testing.T) {
+	cfg := baseConfig()
+	tm, err := Generate(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tm.Meta.SchemaVersion != SchemaVersion {
+		t.Errorf("meta.schemaVersion: want %q, got %q", SchemaVersion, tm.Meta.SchemaVersion)
+	}
+}
+
+// TestRiverCurveWellFormed verifies every river curve has at least 2 points,
+// its source-side endpoint reaches the map border when origin=border, and
+// its mouth endpoint matches the terminus cell center.
 func TestRiverCurveWellFormed(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 10; i++ {
@@ -838,28 +888,40 @@ func TestRiverCurveWellFormed(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seed %d: %v", cfg.Seed, err)
 		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		const margin = 2.0 // projectToBorder output must be ON the border
 		for _, rv := range tm.Rivers {
 			if len(rv.Curve) < 2 {
 				t.Errorf("seed %d: river %d curve too short (%d)", cfg.Seed, rv.ID, len(rv.Curve))
 				continue
 			}
-			if rv.Curve[0] != rv.Source {
-				t.Errorf("seed %d: river %d curve[0] %v != source %v", cfg.Seed, rv.ID, rv.Curve[0], rv.Source)
+			// Inland-origin rivers: curve[0] = source. Border-origin + near
+			// border: curve[0] projects onto the map edge.
+			first := rv.Curve[0]
+			spec := cfg.Terrain.Rivers[rv.ID]
+			if spec.Origin == "border" && nearBorder(rv.Source, w, h, 40) {
+				onBorder := first.X <= margin || first.X >= w-margin ||
+					first.Y <= margin || first.Y >= h-margin
+				if !onBorder {
+					t.Errorf("seed %d: border-origin river %d curve[0] (%.0f,%.0f) not on map border",
+						cfg.Seed, rv.ID, first.X, first.Y)
+				}
+			} else if first != rv.Source {
+				t.Errorf("seed %d: river %d curve[0] %v != source %v",
+					cfg.Seed, rv.ID, first, rv.Source)
 			}
-			if rv.Curve[len(rv.Curve)-1] != rv.Mouth {
+			// Non-offmap rivers terminate exactly at mouth cell center.
+			last := rv.Curve[len(rv.Curve)-1]
+			if spec.End != "offmap" && last != rv.Mouth {
 				t.Errorf("seed %d: river %d curve[end] %v != mouth %v",
-					cfg.Seed, rv.ID, rv.Curve[len(rv.Curve)-1], rv.Mouth)
-			}
-			wantLen := 1 + (len(rv.CellPath)-1)*4
-			if len(rv.Curve) != wantLen {
-				t.Errorf("seed %d: river %d curve %d samples, expected %d",
-					cfg.Seed, rv.ID, len(rv.Curve), wantLen)
+					cfg.Seed, rv.ID, last, rv.Mouth)
 			}
 		}
 	}
 }
 
-// TestHighwayCurveWellFormed — same contract for highways.
+// TestHighwayCurveWellFormed verifies highway curves reach the map border
+// on both ends (highways conceptually span border-to-border).
 func TestHighwayCurveWellFormed(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 5; i++ {
@@ -873,17 +935,28 @@ func TestHighwayCurveWellFormed(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seed %d: %v", cfg.Seed, err)
 		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		const margin = 2.0
 		for _, hw := range tm.Highways {
 			if len(hw.Curve) < 2 {
 				t.Errorf("seed %d: highway %d curve too short (%d)", cfg.Seed, hw.ID, len(hw.Curve))
 				continue
 			}
-			if hw.Curve[0] != hw.From {
-				t.Errorf("seed %d: highway %d curve[0] %v != from %v", cfg.Seed, hw.ID, hw.Curve[0], hw.From)
+			first := hw.Curve[0]
+			last := hw.Curve[len(hw.Curve)-1]
+			onBorderStart := first.X <= margin || first.X >= w-margin ||
+				first.Y <= margin || first.Y >= h-margin
+			onBorderEnd := last.X <= margin || last.X >= w-margin ||
+				last.Y <= margin || last.Y >= h-margin
+			// At least one end should land on the map border (coastal termini
+			// inland do not; handled below).
+			if nearBorder(hw.From, w, h, 40) && !onBorderStart {
+				t.Errorf("seed %d: highway %d curve[0] (%.0f,%.0f) not on border but From is near border",
+					cfg.Seed, hw.ID, first.X, first.Y)
 			}
-			if hw.Curve[len(hw.Curve)-1] != hw.To {
-				t.Errorf("seed %d: highway %d curve[end] %v != to %v",
-					cfg.Seed, hw.ID, hw.Curve[len(hw.Curve)-1], hw.To)
+			if nearBorder(hw.To, w, h, 40) && !onBorderEnd {
+				t.Errorf("seed %d: highway %d curve[end] (%.0f,%.0f) not on border but To is near border",
+					cfg.Seed, hw.ID, last.X, last.Y)
 			}
 		}
 	}

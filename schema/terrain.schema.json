@@ -34,7 +34,7 @@
     },
     "Meta": {
       "type": "object",
-      "required": ["id", "seed", "generatedAt", "cellCount", "worldScale", "config"],
+      "required": ["id", "seed", "generatedAt", "cellCount", "worldScale", "schemaVersion", "config"],
       "properties": {
         "id":              { "type": "string", "pattern": "^t_[0-9a-f]{8}$" },
         "seed":            { "type": "integer" },
@@ -42,6 +42,7 @@
         "cellCount":       { "type": "integer" },
         "relaxIterations": { "type": "integer", "minimum": 0, "maximum": 10 },
         "worldScale":      { "type": "number", "description": "meters per map unit" },
+        "schemaVersion":   { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "description": "Semver of the response shape. Bumped on breaking changes so the client can refuse or adapt to older/newer outputs." },
         "config":          { "$ref": "#/$defs/Config" }
       }
     },
@@ -55,18 +56,19 @@
     },
     "Cell": {
       "type": "object",
-      "required": ["id", "center", "vertices", "terrain", "elevation", "biome", "neighbors"],
+      "required": ["id", "center", "vertices", "vertexElevations", "terrain", "elevation", "biome", "neighbors"],
       "properties": {
-        "id":        { "type": "integer" },
-        "center":    { "$ref": "#/$defs/Point" },
-        "vertices":  { "type": "array", "items": { "$ref": "#/$defs/Point" }, "minItems": 3 },
-        "terrain":   { "type": "string", "enum": ["land", "water"] },
-        "elevation": { "type": "number", "minimum": -1, "maximum": 1, "description": "Normalized height. Land > 0, water ≤ 0 (depth increases toward -1)." },
-        "biome":     { "$ref": "#/$defs/Biome" },
-        "neighbors": { "type": "array", "items": { "type": "integer" } },
-        "river":     { "type": "boolean" },
-        "lake":      { "type": "boolean" },
-        "coastline": { "type": "boolean" }
+        "id":               { "type": "integer" },
+        "center":           { "$ref": "#/$defs/Point" },
+        "vertices":         { "type": "array", "items": { "$ref": "#/$defs/Point" }, "minItems": 3 },
+        "vertexElevations": { "type": "array", "items": { "type": "number", "minimum": -1, "maximum": 1 }, "description": "Parallel to vertices. Each entry is the average elevation of all cells sharing that Voronoi vertex — used for smooth mesh rendering without stepped cell-tops." },
+        "terrain":          { "type": "string", "enum": ["land", "water"] },
+        "elevation":        { "type": "number", "minimum": -1, "maximum": 1, "description": "Normalized height at the cell CENTER. Land > 0, water ≤ 0 (depth increases toward -1). For vertex heights, use vertexElevations." },
+        "biome":            { "$ref": "#/$defs/Biome" },
+        "neighbors":        { "type": "array", "items": { "type": "integer" } },
+        "river":            { "type": "boolean" },
+        "lake":             { "type": "boolean" },
+        "coastline":        { "type": "boolean" }
       }
     },
     "Edge": {

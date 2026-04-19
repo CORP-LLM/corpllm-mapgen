@@ -60,6 +60,46 @@ func assignElevation(cells []Cell, cfg *Config) {
 	}
 }
 
+// computeVertexElevations writes a per-corner averaged elevation into every
+// cell. The average is taken across all cells whose polygons contain the
+// same Voronoi vertex (typically 3 cells per vertex). Shared vertices get
+// consistent values across cells, so the client's mesh has matching
+// elevations at shared corners and renders without seams/steps.
+func computeVertexElevations(cells []Cell) {
+	type vkey struct{ x, y int64 }
+	keyFor := func(p Point) vkey {
+		return vkey{
+			int64(math.Round(p.X * 100)),
+			int64(math.Round(p.Y * 100)),
+		}
+	}
+	buckets := make(map[vkey]struct {
+		sum   float64
+		count int
+	}, len(cells)*4)
+	for _, c := range cells {
+		for _, v := range c.Vertices {
+			k := keyFor(v)
+			b := buckets[k]
+			b.sum += c.Elevation
+			b.count++
+			buckets[k] = b
+		}
+	}
+	for i := range cells {
+		c := &cells[i]
+		c.VertexElevations = make([]float64, len(c.Vertices))
+		for j, v := range c.Vertices {
+			b := buckets[keyFor(v)]
+			if b.count > 0 {
+				c.VertexElevations[j] = b.sum / float64(b.count)
+			} else {
+				c.VertexElevations[j] = c.Elevation
+			}
+		}
+	}
+}
+
 // assignWaterDepth computes negative "elevation" for water cells = BFS distance
 // from the nearest land cell, normalized to [-1, 0]. Shallow water (coastline)
 // is near 0, deep ocean is closer to -1. Reused by the frontend for bathymetry.

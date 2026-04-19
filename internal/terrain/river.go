@@ -183,11 +183,16 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 			width = "medium"
 		}
 		cellPath := append([]int(nil), path...)
+		// Curve extends to the map border at the source only when origin=border
+		// (river enters the map from upstream beyond the edge). Mouth stays at
+		// the actual terminus (coast/lake/offmap handles itself).
+		centers := cellCenters(cells, cellPath)
+		centers = extendAtBorder(centers, w, h, spec.Origin == "border", spec.End == "offmap")
 		rivers = append(rivers, River{
 			ID:       id,
 			Path:     edgePath,
 			CellPath: cellPath,
-			Curve:    catmullRom(cellCenters(cells, cellPath), 4),
+			Curve:    catmullRom(centers, 4),
 			Source:   cells[path[0]].Center,
 			Mouth:    cells[path[len(path)-1]].Center,
 			Width:    width,

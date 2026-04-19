@@ -85,13 +85,17 @@ function buildBiomeMesh(biome, cells) {
   const r = color[0], g = color[1], b = color[2];
 
   for (const cell of cells) {
-    const elev = cell.elevation || 0;
-    const y = elev >= 0 ? elev * HEIGHT_SCALE : elev * DEPTH_SCALE;
+    const cellElev = cell.elevation || 0;
     const base = positions.length / 3;
-    // Top face: fan-triangulate the cell polygon.
-    // Babylon is Y-up, Z-forward; mapgen uses (X, Y) → (X_3d, Z_3d).
     const verts = cell.vertices;
-    for (const v of verts) {
+    const vElevs = cell.vertexElevations || [];
+    // Per-vertex elevation gives smooth meshes that match across cell
+    // boundaries (no stepped flat tops). Fall back to center elevation
+    // if the field is missing on older servers.
+    for (let i = 0; i < verts.length; i++) {
+      const v = verts[i];
+      const e = vElevs[i] != null ? vElevs[i] : cellElev;
+      const y = e >= 0 ? e * HEIGHT_SCALE : e * DEPTH_SCALE;
       positions.push(v.x, y, v.y);
       normals.push(0, 1, 0);
       colors.push(r, g, b, 1);

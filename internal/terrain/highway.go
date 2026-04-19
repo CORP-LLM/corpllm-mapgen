@@ -42,10 +42,13 @@ func generateHighways(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand
 			used[cid] = true
 		}
 
+		// Highways extend to the map border on both ends where applicable.
+		centers := cellCenters(cells, path)
+		centers = extendAtBorder(centers, w, h, true, true)
 		highways = append(highways, Highway{
 			ID:       id,
 			CellPath: path,
-			Curve:    catmullRom(cellCenters(cells, path), 4),
+			Curve:    catmullRom(centers, 4),
 			From:     cells[path[0]].Center,
 			To:       cells[path[len(path)-1]].Center,
 		})

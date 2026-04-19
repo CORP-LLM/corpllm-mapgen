@@ -10,17 +10,21 @@ type Point struct {
 // Elevation is [-1,1]: water cells ≤ 0, land cells > 0.
 // Biome is a coarse classification the client uses to pick textures and
 // asset categories (see biome.go for the full enum).
+// VertexElevations is parallel to Vertices — each entry is the average
+// elevation across all cells sharing that Voronoi vertex. Clients use
+// these for smooth mesh rendering (avoids flat-topped stepped terrain).
 type Cell struct {
-	ID        int     `json:"id"`
-	Center    Point   `json:"center"`
-	Vertices  []Point `json:"vertices"`
-	Terrain   string  `json:"terrain"`
-	Elevation float64 `json:"elevation"`
-	Biome     string  `json:"biome"`
-	Neighbors []int   `json:"neighbors"`
-	River     bool    `json:"river"`
-	Lake      bool    `json:"lake"`
-	Coastline bool    `json:"coastline"`
+	ID               int       `json:"id"`
+	Center           Point     `json:"center"`
+	Vertices         []Point   `json:"vertices"`
+	VertexElevations []float64 `json:"vertexElevations"`
+	Terrain          string    `json:"terrain"`
+	Elevation        float64   `json:"elevation"`
+	Biome            string    `json:"biome"`
+	Neighbors        []int     `json:"neighbors"`
+	River            bool      `json:"river"`
+	Lake             bool      `json:"lake"`
+	Coastline        bool      `json:"coastline"`
 }
 
 // Edge is a shared border between two Voronoi cells.
@@ -81,6 +85,8 @@ type Bounds struct {
 // Meta contains generation metadata.
 // WorldScale is meters per map unit — lets the game engine scale the
 // abstract 1000×800 map coordinates into its world size (default 1 m/unit).
+// SchemaVersion is the output contract version (semver). Bumped when the
+// response shape changes in a way the client must adapt to.
 type Meta struct {
 	ID              string  `json:"id"`
 	Seed            int64   `json:"seed"`
@@ -88,8 +94,13 @@ type Meta struct {
 	CellCount       int     `json:"cellCount"`
 	RelaxIterations int     `json:"relaxIterations"`
 	WorldScale      float64 `json:"worldScale"`
+	SchemaVersion   string  `json:"schemaVersion"`
 	Config          *Config `json:"config"`
 }
+
+// SchemaVersion is the current output-contract version.
+// Bump this when adding/removing required fields; keep within semver discipline.
+const SchemaVersion = "1.0.0"
 
 // Terrain is the full output.
 type Terrain struct {
