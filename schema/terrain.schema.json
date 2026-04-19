@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corpllm.io/schemas/terrain.schema.json",
+  "title": "Terrain",
+  "description": "Output of POST /api/terrain/generate — a complete procedural map the game client consumes to lay out cells, water, roads and biomes.",
+  "type": "object",
+  "required": ["meta", "bounds", "cells", "edges", "coastline"],
+  "properties": {
+    "meta":      { "$ref": "#/$defs/Meta" },
+    "bounds":    { "$ref": "#/$defs/Bounds" },
+    "cells":     { "type": "array", "items": { "$ref": "#/$defs/Cell" } },
+    "edges":     { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
+    "rivers":    { "type": ["array", "null"], "items": { "$ref": "#/$defs/River" } },
+    "lakes":     { "type": ["array", "null"], "items": { "$ref": "#/$defs/Lake" } },
+    "highways":  { "type": ["array", "null"], "items": { "$ref": "#/$defs/Highway" } },
+    "coastline": { "$ref": "#/$defs/Coastline" }
+  },
+  "$defs": {
+    "Point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "Bounds": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width":  { "type": "integer", "minimum": 100, "maximum": 10000 },
+        "height": { "type": "integer", "minimum": 100, "maximum": 10000 }
+      }
+    },
+    "Meta": {
+      "type": "object",
+      "required": ["id", "seed", "generatedAt", "cellCount", "worldScale", "config"],
+      "properties": {
+        "id":              { "type": "string", "pattern": "^t_[0-9a-f]{8}$" },
+        "seed":            { "type": "integer" },
+        "generatedAt":     { "type": "string", "format": "date-time" },
+        "cellCount":       { "type": "integer" },
+        "relaxIterations": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "worldScale":      { "type": "number", "description": "meters per map unit" },
+        "config":          { "$ref": "#/$defs/Config" }
+      }
+    },
+    "Biome": {
+      "type": "string",
+      "enum": [
+        "ocean", "coast", "lake", "river",
+        "beach", "grassland", "hills", "mountain", "peak"
+      ],
+      "description": "Coarse terrain classification used by the client to pick textures and asset categories."
+    },
+    "Cell": {
+      "type": "object",
+      "required": ["id", "center", "vertices", "terrain", "elevation", "biome", "neighbors"],
+      "properties": {
+        "id":        { "type": "integer" },
+        "center":    { "$ref": "#/$defs/Point" },
+        "vertices":  { "type": "array", "items": { "$ref": "#/$defs/Point" }, "minItems": 3 },
+        "terrain":   { "type": "string", "enum": ["land", "water"] },
+        "elevation": { "type": "number", "minimum": -1, "maximum": 1, "description": "Normalized height. Land > 0, water ≤ 0 (depth increases toward -1)." },
+        "biome":     { "$ref": "#/$defs/Biome" },
+        "neighbors": { "type": "array", "items": { "type": "integer" } },
+        "river":     { "type": "boolean" },
+        "lake":      { "type": "boolean" },
+        "coastline": { "type": "boolean" }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["id", "cells", "vertices", "type"],
+      "properties": {
+        "id":        { "type": "integer" },
+        "cells":     { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer" } },
+        "vertices":  { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/Point" } },
+        "type":      { "type": "string", "enum": ["land-land", "water-water", "land-water"] },
+        "river":     { "type": "boolean" },
+        "coastline": { "type": "boolean" }
+      }
+    },
+    "River": {
+      "type": "object",
+      "required": ["id", "path", "cellPath", "source", "mouth", "width"],
+      "description": "Downhill-routed water course. path is edge IDs, cellPath is the matching cell IDs (cellPath length = path length + 1).",
+      "properties": {
+        "id":       { "type": "integer" },
+        "path":     { "type": "array", "items": { "type": "integer" } },
+        "cellPath": { "type": "array", "items": { "type": "integer" }, "minItems": 2 },
+        "source":   { "$ref": "#/$defs/Point" },
+        "mouth":    { "$ref": "#/$defs/Point" },
+        "width":    { "type": "string", "enum": ["narrow", "medium", "wide"] }
+      }
+    },
+    "Lake": {
+      "type": "object",
+      "required": ["id", "cells", "area"],
+      "properties": {
+        "id":    { "type": "integer" },
+        "cells": { "type": "array", "items": { "type": "integer" } },
+        "area":  { "type": "integer", "description": "Number of cells in this lake cluster" }
+      }
+    },
+    "Highway": {
+      "type": "object",
+      "required": ["id", "cellPath", "from", "to"],
+      "description": "A*-routed transport corridor connecting two map borders. Endpoints are cell centers; the client is expected to extend the geometry to the actual map edge.",
+      "properties": {
+        "id":       { "type": "integer" },
+        "cellPath": { "type": "array", "items": { "type": "integer" }, "minItems": 2 },
+        "from":     { "$ref": "#/$defs/Point" },
+        "to":       { "$ref": "#/$defs/Point" }
+      }
+    },
+    "Coastline": {
+      "type": "object",
+      "required": ["edges", "length"],
+      "properties": {
+        "edges":  { "type": "array", "items": { "type": "integer" }, "description": "Edge IDs forming the land-ocean boundary (excludes lake and river borders)." },
+        "length": { "type": "integer" }
+      }
+    },
+    "Config": {
+      "type": "object",
+      "description": "Echo of the input config used to generate this terrain.",
+      "required": ["seed", "width", "height", "cellCount", "relaxIterations", "worldScale", "terrain"],
+      "properties": {
+        "seed":            { "type": "integer" },
+        "width":           { "type": "integer" },
+        "height":          { "type": "integer" },
+        "cellCount":       { "type": "integer" },
+        "relaxIterations": { "type": "integer" },
+        "worldScale":      { "type": "number" },
+        "terrain":         { "$ref": "#/$defs/TerrainConfig" }
+      }
+    },
+    "TerrainConfig": {
+      "type": "object",
+      "properties": {
+        "coastEnabled":    { "type": "boolean" },
+        "coastSide":       { "type": "string", "enum": ["north", "south", "east", "west", "none"] },
+        "coastNoise":      { "type": "number", "minimum": 0, "maximum": 1 },
+        "waterRatio":      { "type": "number", "minimum": 0, "maximum": 1 },
+        "roughness":       { "type": "number", "minimum": 0, "maximum": 1 },
+        "riversEnabled":   { "type": "boolean" },
+        "rivers":          { "type": ["array", "null"], "items": { "$ref": "#/$defs/RiverSpec" } },
+        "lakesEnabled":    { "type": "boolean" },
+        "lakes":           { "type": ["array", "null"], "items": { "$ref": "#/$defs/LakeSpec" } },
+        "highwaysEnabled": { "type": "boolean" },
+        "highways":        { "type": ["array", "null"], "items": { "$ref": "#/$defs/HighwaySpec" } }
+      }
+    },
+    "RiverSpec": {
+      "type": "object",
+      "properties": {
+        "width":        { "type": "string", "enum": ["narrow", "medium", "wide"] },
+        "origin":       { "type": "string", "enum": ["border", "inland"] },
+        "end":          { "type": "string", "enum": ["coast", "lake", "offmap"] },
+        "straightness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "meander":      { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "LakeSpec": {
+      "type": "object",
+      "properties": {
+        "size": { "type": "string", "enum": ["small", "medium", "large"] }
+      }
+    },
+    "HighwaySpec": {
+      "type": "object",
+      "properties": {
+        "from": { "type": "string", "enum": ["north", "south", "east", "west"] },
+        "to":   { "type": "string", "enum": ["north", "south", "east", "west"] }
+      }
+    }
+  }
+}

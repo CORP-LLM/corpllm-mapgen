@@ -7,14 +7,16 @@ type Point struct {
 }
 
 // Cell is a Voronoi polygon.
-// Elevation is [0,1], 1 = highest. Water cells are clamped to 0.
-// Rivers route strictly downhill by elevation (physical gravity model).
+// Elevation is [-1,1]: water cells ≤ 0, land cells > 0.
+// Biome is a coarse classification the client uses to pick textures and
+// asset categories (see biome.go for the full enum).
 type Cell struct {
 	ID        int     `json:"id"`
 	Center    Point   `json:"center"`
 	Vertices  []Point `json:"vertices"`
 	Terrain   string  `json:"terrain"`
 	Elevation float64 `json:"elevation"`
+	Biome     string  `json:"biome"`
 	Neighbors []int   `json:"neighbors"`
 	River     bool    `json:"river"`
 	Lake      bool    `json:"lake"`
@@ -74,12 +76,15 @@ type Bounds struct {
 }
 
 // Meta contains generation metadata.
+// WorldScale is meters per map unit — lets the game engine scale the
+// abstract 1000×800 map coordinates into its world size (default 1 m/unit).
 type Meta struct {
 	ID              string  `json:"id"`
 	Seed            int64   `json:"seed"`
 	GeneratedAt     string  `json:"generatedAt"`
 	CellCount       int     `json:"cellCount"`
 	RelaxIterations int     `json:"relaxIterations"`
+	WorldScale      float64 `json:"worldScale"`
 	Config          *Config `json:"config"`
 }
 

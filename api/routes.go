@@ -2,11 +2,32 @@ package api
 
 import (
 	"net/http"
+	"os"
 	"strings"
 )
 
 // RegisterRoutes wires all endpoints onto mux with CORS middleware.
 func RegisterRoutes(mux *http.ServeMux, h *Handler) {
+	// Serve the JSON schema so clients can validate the terrain response
+	// without running a separate fetch against the repo.
+	mux.Handle("/api/schema/terrain", cors(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "GET required")
+			return
+		}
+		b, err := os.ReadFile("./schema/terrain.schema.json")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "schema unavailable")
+			return
+		}
+		w.Header().Set("Content-Type", "application/schema+json")
+		w.Write(b)
+	})))
+
 	mux.Handle("/api/terrain/generate", cors(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

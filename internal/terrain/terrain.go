@@ -95,6 +95,9 @@ func Generate(cfg *Config) (*Terrain, error) {
 	// 10. Coastline extraction.
 	coastline := extractCoastline(cells, edges)
 
+	// 11. Biomes — derived once all terrain/water assignment is final.
+	assignBiomes(cells, diag.neighbors)
+
 	id := fmt.Sprintf("t_%08x", rng.Uint32())
 	return &Terrain{
 		Meta: Meta{
@@ -103,6 +106,7 @@ func Generate(cfg *Config) (*Terrain, error) {
 			GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
 			CellCount:       len(cells),
 			RelaxIterations: cfg.RelaxIterations,
+			WorldScale:      cfg.WorldScale,
 			Config:          cfg,
 		},
 		Bounds:    Bounds{Width: cfg.Width, Height: cfg.Height},

@@ -44,12 +44,16 @@ type TerrainConfig struct {
 }
 
 // Config is the full generation config (input JSON).
+// WorldScale is meters per map unit. The map's internal coordinates (0..Width
+// × 0..Height) are abstract — the game engine multiplies by this scale to
+// place cells in its world. Default 1.0 (1 map unit = 1 meter).
 type Config struct {
 	Seed            int64         `json:"seed"`
 	Width           int           `json:"width"`
 	Height          int           `json:"height"`
 	CellCount       int           `json:"cellCount"`
 	RelaxIterations int           `json:"relaxIterations"`
+	WorldScale      float64       `json:"worldScale"`
 	Terrain         TerrainConfig `json:"terrain"`
 }
 
@@ -63,6 +67,9 @@ func (c *Config) Defaults() {
 	}
 	if c.CellCount == 0 {
 		c.CellCount = 1000
+	}
+	if c.WorldScale <= 0 {
+		c.WorldScale = 1.0
 	}
 	if c.Terrain.CoastSide == "" {
 		c.Terrain.CoastSide = "south"
@@ -111,6 +118,9 @@ func (c *Config) Validate() error {
 	}
 	if c.RelaxIterations < 0 || c.RelaxIterations > 10 {
 		return errors.New("relaxIterations must be 0–10")
+	}
+	if c.WorldScale < 0.001 || c.WorldScale > 10000 {
+		return errors.New("worldScale must be 0.001–10000 (meters per map unit)")
 	}
 	t := c.Terrain
 	validSides := map[string]bool{"north": true, "south": true, "east": true, "west": true, "none": true}
