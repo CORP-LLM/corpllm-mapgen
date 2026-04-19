@@ -151,11 +151,12 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 			width = "medium"
 		}
 		rivers = append(rivers, River{
-			ID:     id,
-			Path:   edgePath,
-			Source: cells[path[0]].Center,
-			Mouth:  cells[path[len(path)-1]].Center,
-			Width:  width,
+			ID:       id,
+			Path:     edgePath,
+			CellPath: append([]int(nil), path...),
+			Source:   cells[path[0]].Center,
+			Mouth:    cells[path[len(path)-1]].Center,
+			Width:    width,
 		})
 	}
 	return rivers
@@ -328,10 +329,18 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 func endPreferenceScore(nc *Cell, end string, w, h float64,
 	isCoast, isLake func(*Cell) bool, lakeIDs []int, cells []Cell) float64 {
 
+	// Any existing river cell is a valid tributary terminus — slightly less
+	// preferred than the configured end-type, but still strong attractor
+	// so rivers naturally merge when they meet.
+	const tributaryBonus = -5e8
+
 	switch end {
 	case "coast":
 		if isCoast(nc) {
 			return -1e9
+		}
+		if nc.River {
+			return tributaryBonus
 		}
 		if isLake(nc) {
 			return 5000 // prefer continuing to coast over ending in lake
@@ -339,6 +348,9 @@ func endPreferenceScore(nc *Cell, end string, w, h float64,
 	case "lake":
 		if isLake(nc) {
 			return -1e9
+		}
+		if nc.River {
+			return tributaryBonus
 		}
 		if isCoast(nc) {
 			return 5000
@@ -350,6 +362,9 @@ func endPreferenceScore(nc *Cell, end string, w, h float64,
 	case "offmap":
 		if nc.Terrain == "water" {
 			return 5000
+		}
+		if nc.River {
+			return tributaryBonus
 		}
 		return distToEdge(nc.Center, w, h) * 3
 	}

@@ -32,12 +32,15 @@ type Edge struct {
 }
 
 // River is a path through cell-edges from source to mouth.
+// CellPath is the matching sequence of cell IDs (len = len(Path)+1),
+// useful for flow-accumulation rendering (width varies along the path).
 type River struct {
-	ID     int    `json:"id"`
-	Path   []int  `json:"path"`
-	Source Point  `json:"source"`
-	Mouth  Point  `json:"mouth"`
-	Width  string `json:"width"`
+	ID       int    `json:"id"`
+	Path     []int  `json:"path"`
+	CellPath []int  `json:"cellPath"`
+	Source   Point  `json:"source"`
+	Mouth    Point  `json:"mouth"`
+	Width    string `json:"width"`
 }
 
 // Lake is a BFS cluster of water cells.
