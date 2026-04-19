@@ -182,10 +182,12 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		if width == "" {
 			width = "medium"
 		}
+		cellPath := append([]int(nil), path...)
 		rivers = append(rivers, River{
 			ID:       id,
 			Path:     edgePath,
-			CellPath: append([]int(nil), path...),
+			CellPath: cellPath,
+			Curve:    catmullRom(cellCenters(cells, cellPath), 4),
 			Source:   cells[path[0]].Center,
 			Mouth:    cells[path[len(path)-1]].Center,
 			Width:    width,

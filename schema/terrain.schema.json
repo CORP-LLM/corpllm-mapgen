@@ -83,12 +83,13 @@
     },
     "River": {
       "type": "object",
-      "required": ["id", "path", "cellPath", "source", "mouth", "width"],
-      "description": "Downhill-routed water course. path is edge IDs, cellPath is the matching cell IDs (cellPath length = path length + 1).",
+      "required": ["id", "path", "cellPath", "curve", "source", "mouth", "width"],
+      "description": "Downhill-routed water course. path is edge IDs, cellPath is the matching cell IDs (cellPath length = path length + 1). curve is a densified Catmull-Rom spline through the cell centers (4 samples per segment, clamp-mode endpoints) — draw directly as a mesh or polyline.",
       "properties": {
         "id":       { "type": "integer" },
         "path":     { "type": "array", "items": { "type": "integer" } },
         "cellPath": { "type": "array", "items": { "type": "integer" }, "minItems": 2 },
+        "curve":    { "type": "array", "items": { "$ref": "#/$defs/Point" }, "minItems": 2 },
         "source":   { "$ref": "#/$defs/Point" },
         "mouth":    { "$ref": "#/$defs/Point" },
         "width":    { "type": "string", "enum": ["narrow", "medium", "wide"] }
@@ -105,11 +106,12 @@
     },
     "Highway": {
       "type": "object",
-      "required": ["id", "cellPath", "from", "to"],
-      "description": "A*-routed transport corridor connecting two map borders. Endpoints are cell centers; the client is expected to extend the geometry to the actual map edge.",
+      "required": ["id", "cellPath", "curve", "from", "to"],
+      "description": "A*-routed transport corridor connecting two map borders. Endpoints are cell centers; the client is expected to extend the geometry to the actual map edge. curve is a densified Catmull-Rom spline through the cell centers (4 samples per segment, clamp-mode endpoints) — draw directly as a road mesh.",
       "properties": {
         "id":       { "type": "integer" },
         "cellPath": { "type": "array", "items": { "type": "integer" }, "minItems": 2 },
+        "curve":    { "type": "array", "items": { "$ref": "#/$defs/Point" }, "minItems": 2 },
         "from":     { "$ref": "#/$defs/Point" },
         "to":       { "$ref": "#/$defs/Point" }
       }

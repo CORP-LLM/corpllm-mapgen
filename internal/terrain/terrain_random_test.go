@@ -827,6 +827,68 @@ func TestHighwayAvoidsWaterWhenLandAvailable(t *testing.T) {
 	}
 }
 
+// TestRiverCurveWellFormed verifies every generated river has a spline curve
+// whose endpoints match the source/mouth cell centers and whose sample count
+// matches the formula 1 + (cellPath-1) × samplesPerSegment.
+func TestRiverCurveWellFormed(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, rv := range tm.Rivers {
+			if len(rv.Curve) < 2 {
+				t.Errorf("seed %d: river %d curve too short (%d)", cfg.Seed, rv.ID, len(rv.Curve))
+				continue
+			}
+			if rv.Curve[0] != rv.Source {
+				t.Errorf("seed %d: river %d curve[0] %v != source %v", cfg.Seed, rv.ID, rv.Curve[0], rv.Source)
+			}
+			if rv.Curve[len(rv.Curve)-1] != rv.Mouth {
+				t.Errorf("seed %d: river %d curve[end] %v != mouth %v",
+					cfg.Seed, rv.ID, rv.Curve[len(rv.Curve)-1], rv.Mouth)
+			}
+			wantLen := 1 + (len(rv.CellPath)-1)*4
+			if len(rv.Curve) != wantLen {
+				t.Errorf("seed %d: river %d curve %d samples, expected %d",
+					cfg.Seed, rv.ID, len(rv.Curve), wantLen)
+			}
+		}
+	}
+}
+
+// TestHighwayCurveWellFormed — same contract for highways.
+func TestHighwayCurveWellFormed(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 5; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.HighwaysEnabled = true
+		cfg.Terrain.Highways = []HighwaySpec{
+			{From: "north", To: "south"},
+			{From: "west", To: "east"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, hw := range tm.Highways {
+			if len(hw.Curve) < 2 {
+				t.Errorf("seed %d: highway %d curve too short (%d)", cfg.Seed, hw.ID, len(hw.Curve))
+				continue
+			}
+			if hw.Curve[0] != hw.From {
+				t.Errorf("seed %d: highway %d curve[0] %v != from %v", cfg.Seed, hw.ID, hw.Curve[0], hw.From)
+			}
+			if hw.Curve[len(hw.Curve)-1] != hw.To {
+				t.Errorf("seed %d: highway %d curve[end] %v != to %v",
+					cfg.Seed, hw.ID, hw.Curve[len(hw.Curve)-1], hw.To)
+			}
+		}
+	}
+}
+
 // TestBiomesAssigned verifies every cell receives a non-empty biome value
 // from the allowed enum, and that biome correlates with terrain as expected:
 // water cells → water biomes, land cells → land biomes.

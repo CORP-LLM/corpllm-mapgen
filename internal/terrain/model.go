@@ -34,15 +34,17 @@ type Edge struct {
 }
 
 // River is a path through cell-edges from source to mouth.
-// CellPath is the matching sequence of cell IDs (len = len(Path)+1),
-// useful for flow-accumulation rendering (width varies along the path).
+// CellPath is the matching sequence of cell IDs (len = len(Path)+1).
+// Curve is a densified Catmull-Rom spline through the cell centers —
+// ready for the client to draw as a smooth mesh or polyline.
 type River struct {
-	ID       int    `json:"id"`
-	Path     []int  `json:"path"`
-	CellPath []int  `json:"cellPath"`
-	Source   Point  `json:"source"`
-	Mouth    Point  `json:"mouth"`
-	Width    string `json:"width"`
+	ID       int     `json:"id"`
+	Path     []int   `json:"path"`
+	CellPath []int   `json:"cellPath"`
+	Curve    []Point `json:"curve"`
+	Source   Point   `json:"source"`
+	Mouth    Point   `json:"mouth"`
+	Width    string  `json:"width"`
 }
 
 // Lake is a BFS cluster of water cells.
@@ -60,13 +62,14 @@ type Coastline struct {
 
 // Highway is a cell path connecting two map borders.
 // A* routed with penalties for elevation change and water crossings.
-// No width — all highways are the same physical size (4-lane street
-// asset in the game); they're a logical transport layer, not terrain.
+// Curve is a densified Catmull-Rom spline through the cell centers —
+// the client renders this directly as a road mesh.
 type Highway struct {
-	ID       int   `json:"id"`
-	CellPath []int `json:"cellPath"`
-	From     Point `json:"from"`
-	To       Point `json:"to"`
+	ID       int     `json:"id"`
+	CellPath []int   `json:"cellPath"`
+	Curve    []Point `json:"curve"`
+	From     Point   `json:"from"`
+	To       Point   `json:"to"`
 }
 
 // Bounds is the map rectangle.

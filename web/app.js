@@ -439,25 +439,24 @@ function render() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     // Fixed width — highways are a 4-lane game asset, not a terrain feature
-    // with varying size.
+    // with varying size. Render via the server-supplied Catmull-Rom curve
+    // so paths look like roads, not chopped-up polylines.
     const baseW = 2.6;
     for (const hw of terrain.highways) {
-      const cp = hw.cellPath;
-      if (!cp || cp.length < 2) continue;
-      const first = cellById.get(cp[0]);
-      const last  = cellById.get(cp[cp.length - 1]);
-      if (!first || !last) continue;
-      const entry = atBorder(first.center) ? toNearestBorder(first.center) : null;
-      const exit  = atBorder(last.center)  ? toNearestBorder(last.center)  : null;
+      const curve = hw.curve;
+      if (!curve || curve.length < 2) continue;
+      const first = curve[0];
+      const last  = curve[curve.length - 1];
+      const entry = atBorder(first) ? toNearestBorder(first) : null;
+      const exit  = atBorder(last)  ? toNearestBorder(last)  : null;
 
       const trace = () => {
         ctx.beginPath();
         if (entry) ctx.moveTo(entry.x, entry.y);
-        else ctx.moveTo(first.center.x, first.center.y);
-        if (entry) ctx.lineTo(first.center.x, first.center.y);
-        for (let i = 1; i < cp.length; i++) {
-          const c = cellById.get(cp[i]);
-          if (c) ctx.lineTo(c.center.x, c.center.y);
+        else ctx.moveTo(first.x, first.y);
+        if (entry) ctx.lineTo(first.x, first.y);
+        for (let i = 1; i < curve.length; i++) {
+          ctx.lineTo(curve[i].x, curve[i].y);
         }
         if (exit) ctx.lineTo(exit.x, exit.y);
       };
