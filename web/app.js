@@ -413,10 +413,15 @@ function render() {
   }
 
   // Highways — light concrete, overlaid on top of all terrain/water.
-  // Both endpoints extend to the nearest map border so traffic visibly
-  // enters and exits the map (visitors come from beyond).
+  // Border-terminus endpoints extend to the nearest map edge so traffic
+  // visibly enters/exits the map. Coastal termini (when the target side
+  // is entirely water, the highway ends at the shore) do NOT extend —
+  // they stop at the cell center, a natural "port" look.
   if (terrain.highways && terrain.highways.length > 0) {
     const bw = terrain.bounds.width, bh = terrain.bounds.height;
+    const MARGIN = 40;
+    const atBorder = p =>
+      p.x <= MARGIN || p.x >= bw - MARGIN || p.y <= MARGIN || p.y >= bh - MARGIN;
     const toNearestBorder = pt => {
       const opts = [
         { x: 0,  y: pt.y, d: pt.x },
@@ -435,18 +440,19 @@ function render() {
       const first = cellById.get(cp[0]);
       const last  = cellById.get(cp[cp.length - 1]);
       if (!first || !last) continue;
-      const entry = toNearestBorder(first.center);
-      const exit  = toNearestBorder(last.center);
+      const entry = atBorder(first.center) ? toNearestBorder(first.center) : null;
+      const exit  = atBorder(last.center)  ? toNearestBorder(last.center)  : null;
 
       const trace = () => {
         ctx.beginPath();
-        ctx.moveTo(entry.x, entry.y);
-        ctx.lineTo(first.center.x, first.center.y);
+        if (entry) ctx.moveTo(entry.x, entry.y);
+        else ctx.moveTo(first.center.x, first.center.y);
+        if (entry) ctx.lineTo(first.center.x, first.center.y);
         for (let i = 1; i < cp.length; i++) {
           const c = cellById.get(cp[i]);
           if (c) ctx.lineTo(c.center.x, c.center.y);
         }
-        ctx.lineTo(exit.x, exit.y);
+        if (exit) ctx.lineTo(exit.x, exit.y);
       };
 
       ctx.strokeStyle = '#1c1f26';

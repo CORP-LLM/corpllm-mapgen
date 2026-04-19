@@ -558,29 +558,60 @@ func TestHighwaysConnectBorders(t *testing.T) {
 		}
 		w, h := float64(cfg.Width), float64(cfg.Height)
 		const margin = 40.0
+		cellMap := make(map[int]*Cell, len(tm.Cells))
+		for i := range tm.Cells {
+			cellMap[tm.Cells[i].ID] = &tm.Cells[i]
+		}
+		// Endpoint is valid if it's at the configured border OR it's a
+		// coastline land cell on the corresponding map half (fallback when
+		// that whole side is coast water).
+		checkEndpoint := func(hwID int, endName string, pt Point, side string) {
+			atBorder := false
+			onHalf := false
+			switch side {
+			case "north":
+				atBorder = pt.Y <= margin
+				onHalf = pt.Y < h*0.5
+			case "south":
+				atBorder = pt.Y >= h-margin
+				onHalf = pt.Y > h*0.5
+			case "east":
+				atBorder = pt.X >= w-margin
+				onHalf = pt.X > w*0.5
+			case "west":
+				atBorder = pt.X <= margin
+				onHalf = pt.X < w*0.5
+			}
+			if atBorder {
+				return
+			}
+			// Fallback: coastline cell on the right half.
+			for _, c := range cellMap {
+				if c.Center.X != pt.X || c.Center.Y != pt.Y {
+					continue
+				}
+				isCoastal := c.Terrain == "land"
+				if isCoastal {
+					hasWaterNb := false
+					for _, nb := range c.Neighbors {
+						if cellMap[nb].Terrain == "water" {
+							hasWaterNb = true
+							break
+						}
+					}
+					isCoastal = hasWaterNb
+				}
+				if onHalf && isCoastal {
+					return
+				}
+			}
+			t.Errorf("seed %d: highway %d %s (%.0f,%.0f) not at %s border or coast",
+				cfg.Seed, hwID, endName, pt.X, pt.Y, side)
+		}
 		for _, hw := range tm.Highways {
 			spec := cfg.Terrain.Highways[hw.ID]
-			checkAtBorder := func(p Point, side string) bool {
-				switch side {
-				case "north":
-					return p.Y <= margin
-				case "south":
-					return p.Y >= h-margin
-				case "east":
-					return p.X >= w-margin
-				case "west":
-					return p.X <= margin
-				}
-				return false
-			}
-			if !checkAtBorder(hw.From, spec.From) {
-				t.Errorf("seed %d: highway %d from (%.0f,%.0f) not on %s border",
-					cfg.Seed, hw.ID, hw.From.X, hw.From.Y, spec.From)
-			}
-			if !checkAtBorder(hw.To, spec.To) {
-				t.Errorf("seed %d: highway %d to (%.0f,%.0f) not on %s border",
-					cfg.Seed, hw.ID, hw.To.X, hw.To.Y, spec.To)
-			}
+			checkEndpoint(hw.ID, "from", hw.From, spec.From)
+			checkEndpoint(hw.ID, "to", hw.To, spec.To)
 			if len(hw.CellPath) < 2 {
 				t.Errorf("seed %d: highway %d path too short: %d cells",
 					cfg.Seed, hw.ID, len(hw.CellPath))

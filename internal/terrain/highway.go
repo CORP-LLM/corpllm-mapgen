@@ -25,8 +25,8 @@ func generateHighways(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand
 			to = oppositeSide(from)
 		}
 
-		fromPool := highwayBorderCells(cells, from, w, h)
-		toPool := highwayBorderCells(cells, to, w, h)
+		fromPool := highwayBorderCells(cells, diag.neighbors, from, w, h)
+		toPool := highwayBorderCells(cells, diag.neighbors, to, w, h)
 		if len(fromPool) == 0 || len(toPool) == 0 {
 			continue
 		}
@@ -71,15 +71,22 @@ func oppositeSide(s string) string {
 	return "south"
 }
 
-// highwayBorderCells returns cells sitting within a small margin of the
-// given side. Land cells are preferred, but water cells are accepted as
-// fallback so a highway whose target side is the coast (e.g. from=N to=S
-// with coast=south) can still terminate — it just ends at the waterfront
-// and the render extends the stroke out to the map edge.
-func highwayBorderCells(cells []Cell, side string, w, h float64) []int {
+// highwayBorderCells picks terminus candidates for the given side:
+//
+//  1. Land cells within a small margin of the actual map border
+//     (normal case — a highway enters/exits at the map edge).
+//  2. If the entire side is water (e.g. to=south with coast=south),
+//     fall back to coastline LAND cells on that half of the map —
+//     a highway ending "at the south" really means ending at the
+//     south shore, a waterfront terminus. It does NOT dive into
+//     the sea.
+func highwayBorderCells(cells []Cell, neighbors [][]int, side string, w, h float64) []int {
 	const margin = 35.0
-	var land, water []int
+	var land []int
 	for _, c := range cells {
+		if c.Terrain != "land" {
+			continue
+		}
 		cx, cy := c.Center.X, c.Center.Y
 		match := false
 		switch side {
@@ -92,19 +99,43 @@ func highwayBorderCells(cells []Cell, side string, w, h float64) []int {
 		case "west":
 			match = cx <= margin
 		}
-		if !match {
-			continue
-		}
-		if c.Terrain == "land" {
+		if match {
 			land = append(land, c.ID)
-		} else {
-			water = append(water, c.ID)
 		}
 	}
 	if len(land) > 0 {
 		return land
 	}
-	return water
+
+	// Side is entirely water → find coastline land cells on that half.
+	var coastal []int
+	for _, c := range cells {
+		if c.Terrain != "land" {
+			continue
+		}
+		cx, cy := c.Center.X, c.Center.Y
+		onHalf := false
+		switch side {
+		case "north":
+			onHalf = cy < h*0.5
+		case "south":
+			onHalf = cy > h*0.5
+		case "east":
+			onHalf = cx > w*0.5
+		case "west":
+			onHalf = cx < w*0.5
+		}
+		if !onHalf {
+			continue
+		}
+		for _, nbID := range neighbors[c.ID] {
+			if cells[nbID].Terrain == "water" {
+				coastal = append(coastal, c.ID)
+				break
+			}
+		}
+	}
+	return coastal
 }
 
 // routeHighway returns the A*-optimal cell path from src to dst, or nil
