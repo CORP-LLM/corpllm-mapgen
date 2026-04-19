@@ -2,18 +2,28 @@ package terrain
 
 import "errors"
 
+// RiverSpec defines one river: its visual width and routing endpoints.
+type RiverSpec struct {
+	Width  string `json:"width"`  // "narrow", "medium", "wide"
+	Origin string `json:"origin"` // "border" or "inland"
+	End    string `json:"end"`    // "coast" or "inland"
+}
+
+// LakeSpec defines one lake's size.
+type LakeSpec struct {
+	Size string `json:"size"` // "small", "medium", "large"
+}
+
 // TerrainConfig holds feature-flag parameters.
 type TerrainConfig struct {
-	CoastEnabled  bool    `json:"coastEnabled"`
-	CoastSide     string  `json:"coastSide"`
-	CoastNoise    float64 `json:"coastNoise"`
-	WaterRatio    float64 `json:"waterRatio"`
-	RiversEnabled bool    `json:"riversEnabled"`
-	RiverCount    int     `json:"riverCount"`
-	RiverWidth    string  `json:"riverWidth"`
-	LakesEnabled  bool    `json:"lakesEnabled"`
-	LakeCount     int     `json:"lakeCount"`
-	LakeSize      string  `json:"lakeSize"`
+	CoastEnabled  bool        `json:"coastEnabled"`
+	CoastSide     string      `json:"coastSide"`
+	CoastNoise    float64     `json:"coastNoise"`
+	WaterRatio    float64     `json:"waterRatio"`
+	RiversEnabled bool        `json:"riversEnabled"`
+	Rivers        []RiverSpec `json:"rivers"`
+	LakesEnabled  bool        `json:"lakesEnabled"`
+	Lakes         []LakeSpec  `json:"lakes"`
 }
 
 // Config is the full generation config (input JSON).
@@ -35,16 +45,27 @@ func (c *Config) Defaults() {
 		c.Height = 800
 	}
 	if c.CellCount == 0 {
-		c.CellCount = 500
+		c.CellCount = 1000
 	}
 	if c.Terrain.CoastSide == "" {
 		c.Terrain.CoastSide = "south"
 	}
-	if c.Terrain.RiverWidth == "" {
-		c.Terrain.RiverWidth = "medium"
+	for i := range c.Terrain.Rivers {
+		r := &c.Terrain.Rivers[i]
+		if r.Width == "" {
+			r.Width = "medium"
+		}
+		if r.Origin == "" {
+			r.Origin = "border"
+		}
+		if r.End == "" {
+			r.End = "coast"
+		}
 	}
-	if c.Terrain.LakeSize == "" {
-		c.Terrain.LakeSize = "medium"
+	for i := range c.Terrain.Lakes {
+		if c.Terrain.Lakes[i].Size == "" {
+			c.Terrain.Lakes[i].Size = "medium"
+		}
 	}
 }
 
@@ -73,19 +94,32 @@ func (c *Config) Validate() error {
 	if t.WaterRatio < 0 || t.WaterRatio > 1 {
 		return errors.New("waterRatio must be 0.0–1.0")
 	}
-	if t.RiverCount < 0 || t.RiverCount > 20 {
-		return errors.New("riverCount must be 0–20")
+	if len(t.Rivers) > 20 {
+		return errors.New("at most 20 rivers allowed")
 	}
 	validWidths := map[string]bool{"narrow": true, "medium": true, "wide": true}
-	if t.RiverWidth != "" && !validWidths[t.RiverWidth] {
-		return errors.New("riverWidth must be narrow/medium/wide")
+	validOrigins := map[string]bool{"border": true, "inland": true}
+	validEnds := map[string]bool{"coast": true, "inland": true}
+	for i, r := range t.Rivers {
+		if r.Width != "" && !validWidths[r.Width] {
+			return errors.New("river width must be narrow/medium/wide")
+		}
+		if r.Origin != "" && !validOrigins[r.Origin] {
+			return errors.New("river origin must be border/inland")
+		}
+		if r.End != "" && !validEnds[r.End] {
+			return errors.New("river end must be coast/inland")
+		}
+		_ = i
 	}
-	if t.LakeCount < 0 || t.LakeCount > 20 {
-		return errors.New("lakeCount must be 0–20")
+	if len(t.Lakes) > 20 {
+		return errors.New("at most 20 lakes allowed")
 	}
 	validSizes := map[string]bool{"small": true, "medium": true, "large": true}
-	if t.LakeSize != "" && !validSizes[t.LakeSize] {
-		return errors.New("lakeSize must be small/medium/large")
+	for _, l := range t.Lakes {
+		if l.Size != "" && !validSizes[l.Size] {
+			return errors.New("lake size must be small/medium/large")
+		}
 	}
 	return nil
 }

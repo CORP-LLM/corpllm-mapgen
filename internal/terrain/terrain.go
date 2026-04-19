@@ -49,13 +49,13 @@ func Generate(cfg *Config) (*Terrain, error) {
 
 	// 7. Rivers.
 	var rivers []River
-	if cfg.Terrain.RiversEnabled && cfg.Terrain.RiverCount > 0 {
+	if cfg.Terrain.RiversEnabled && len(cfg.Terrain.Rivers) > 0 {
 		rivers = generateRivers(cells, edges, diag, cfg, rng)
 	}
 
 	// 8. Lakes.
 	var lakes []Lake
-	if cfg.Terrain.LakesEnabled && cfg.Terrain.LakeCount > 0 {
+	if cfg.Terrain.LakesEnabled && len(cfg.Terrain.Lakes) > 0 {
 		lakes = generateLakes(cells, diag, cfg, rng)
 	}
 

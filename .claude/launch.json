@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mapgen",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "./cmd/mapgen/"],
+      "port": 8080,
+      "autoPort": true
+    }
+  ]
+}

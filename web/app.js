@@ -214,48 +214,7 @@ function render() {
   }
 
   ctx.restore();
-  drawLegend();
   updateStatus();
-}
-
-function drawLegend() {
-  const items = [
-    { color: C.land,      label: 'LAND'  },
-    { color: C.water,     label: 'WATER' },
-    { color: C.lake,      label: 'LAKE'  },
-    { color: C.riverCell, label: 'RIVER' },
-  ];
-  const sw = 12, sh = 9;
-  const gap = 62;
-  const sx = 12;
-  const sy = canvas.height - 22;
-
-  ctx.font = '9px Courier New';
-  ctx.textBaseline = 'middle';
-
-  items.forEach((item, i) => {
-    const x = sx + i * gap;
-    ctx.fillStyle = item.color;
-    ctx.fillRect(x, sy, sw, sh);
-    ctx.strokeStyle = '#2a2a44';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(x, sy, sw, sh);
-    ctx.fillStyle = '#606078';
-    ctx.fillText(item.label, x + sw + 4, sy + sh / 2);
-  });
-
-  // Coast — line sample
-  const cx = sx + items.length * gap;
-  ctx.strokeStyle = C.coast;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(cx, sy + sh / 2);
-  ctx.lineTo(cx + sw, sy + sh / 2);
-  ctx.stroke();
-  ctx.fillStyle = '#606078';
-  ctx.fillText('COAST', cx + sw + 4, sy + sh / 2);
-
-  ctx.textBaseline = 'alphabetic';
 }
 
 function buildLakeSet() {
@@ -387,28 +346,60 @@ function loadTerrain(t) {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 function readConfig() {
-  const coastEn  = el('cfg-coast-en').checked;
-  const riversEn = el('cfg-rivers-en').checked;
-  const lakesEn  = el('cfg-lakes-en').checked;
   return {
     seed:            intVal('cfg-seed',   42),
     width:           intVal('cfg-width',  1000),
     height:          intVal('cfg-height', 800),
-    cellCount:       intVal('cfg-cells',  500),
+    cellCount:       intVal('cfg-cells',  1000),
     relaxIterations: intVal('cfg-relax',  3),
     terrain: {
-      coastEnabled:  coastEn,
+      coastEnabled:  el('cfg-coast-en').checked,
       coastSide:     el('cfg-coast-side').value,
       coastNoise:    intVal('cfg-coast-noise',  50) / 100,
       waterRatio:    intVal('cfg-water-ratio',  25) / 100,
-      riversEnabled: riversEn,
-      riverCount:    intVal('cfg-river-count',  3),
-      riverWidth:    el('cfg-river-width').value,
-      lakesEnabled:  lakesEn,
-      lakeCount:     intVal('cfg-lake-count',   5),
-      lakeSize:      el('cfg-lake-size').value,
+      riversEnabled: el('cfg-rivers-en').checked,
+      rivers:        readRiverList(),
+      lakesEnabled:  el('cfg-lakes-en').checked,
+      lakes:         readLakeList(),
     },
   };
+}
+
+// ── Dynamic rivers / lakes list ──────────────────────────────────────────────
+function readRiverList() {
+  const rows = el('rivers-list').querySelectorAll('.dyn-row');
+  return Array.from(rows).map(row => {
+    const route = row.querySelector('.river-route').value.split('-');
+    return {
+      width:  row.querySelector('.river-width').value,
+      origin: route[0],
+      end:    route[1],
+    };
+  });
+}
+
+function readLakeList() {
+  const rows = el('lakes-list').querySelectorAll('.dyn-row');
+  return Array.from(rows).map(row => ({
+    size: row.querySelector('.lake-size').value,
+  }));
+}
+
+function addRiverRow(width = 'medium', origin = 'border', end = 'coast') {
+  const tpl = el('river-row-template');
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  row.querySelector('.river-width').value = width;
+  row.querySelector('.river-route').value = `${origin}-${end}`;
+  row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+  el('rivers-list').appendChild(row);
+}
+
+function addLakeRow(size = 'medium') {
+  const tpl = el('lake-row-template');
+  const row = tpl.content.firstElementChild.cloneNode(true);
+  row.querySelector('.lake-size').value = size;
+  row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
+  el('lakes-list').appendChild(row);
 }
 
 // ── Import / Export ───────────────────────────────────────────────────────────
@@ -471,18 +462,23 @@ el('btn-generate').addEventListener('click', generate);
 el('btn-export').addEventListener('click', exportJSON);
 el('btn-import').addEventListener('click', () => el('file-input').click());
 
+el('btn-add-river').addEventListener('click', () => addRiverRow());
+el('btn-add-lake').addEventListener('click', () => addLakeRow());
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
   bindRange('cfg-cells',       'cfg-cells-val');
   bindRange('cfg-relax',       'cfg-relax-val');
   bindRange('cfg-coast-noise', 'cfg-coast-noise-val', v => (v / 100).toFixed(2));
   bindRange('cfg-water-ratio', 'cfg-water-ratio-val', v => v + '%');
-  bindRange('cfg-river-count', 'cfg-river-count-val');
-  bindRange('cfg-lake-count',  'cfg-lake-count-val');
 
   bindToggle('cfg-coast-en',  'coast-opts');
   bindToggle('cfg-rivers-en', 'rivers-opts');
   bindToggle('cfg-lakes-en',  'lakes-opts');
+
+  // Default river / lake configuration: 3 rivers, 5 lakes.
+  for (let i = 0; i < 3; i++) addRiverRow();
+  for (let i = 0; i < 5; i++) addLakeRow();
 
   showEmpty(true);
   resizeCanvas();

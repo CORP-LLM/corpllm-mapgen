@@ -231,6 +231,47 @@ button.secondary:hover { background: var(--dim); color: var(--bg); }
   margin-top: 6px;
 }
 
+/* ── Dynamic rows (rivers / lakes) ────────── */
+.dyn-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.dyn-row select {
+  flex: 1;
+  min-width: 0;
+}
+.btn-remove {
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--input-border);
+  color: var(--dim);
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+}
+.btn-remove:hover {
+  color: #ff5577;
+  border-color: #ff5577;
+  background: transparent;
+}
+.add-btn {
+  width: 100%;
+  padding: 4px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+/* ── Main (canvas + legend) ───────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ── Canvas area ──────────────────────────── */
 #canvas-wrap {
   flex: 1;
@@ -297,13 +338,39 @@ button.secondary:hover { background: var(--dim); color: var(--bg); }
   color: var(--border);
 }
 
-/* ── Status bar ───────────────────────────── */
-#statusbar {
-  position: absolute;
-  bottom: 8px;
-  left: 10px;
+/* ── Legend bar (below canvas) ────────────── */
+#legend-bar {
+  height: 30px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px;
   font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.swatch {
+  width: 14px;
+  height: 10px;
+  border: 1px solid var(--border);
+  display: inline-block;
+}
+.swatch.line {
+  height: 3px;
+  border: none;
+}
+#statusbar {
+  margin-left: auto;
   color: var(--dim);
+  font-size: 10px;
   letter-spacing: 1px;
-  pointer-events: none;
 }

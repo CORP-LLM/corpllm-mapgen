@@ -5,13 +5,15 @@ import (
 	"math/rand"
 )
 
-// generateRivers routes rivers from land border cells toward water/edge.
+// generateRivers routes one river per RiverSpec. Each spec has its own
+// origin (border/inland), end (coast/inland), and width.
 func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Config, rng *rand.Rand) []River {
 	w := float64(cfg.Width)
 	h := float64(cfg.Height)
 	borderDist := math.Min(w, h) * 0.15
+	inlandDist := math.Min(w, h) * 0.3
 
-	// Build edge lookup: given a cell pair, find edge index.
+	// Edge lookup for assembling the river path.
 	edgeIndex := make(map[[2]int]int, len(diag.edgePairs))
 	for i, p := range diag.edgePairs {
 		a, b := p[0], p[1]
@@ -21,36 +23,53 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		edgeIndex[[2]int{a, b}] = i
 	}
 
-	// Candidate source cells: land, near map border.
-	var candidates []int
+	// Partition land cells by zone once; re-filter per spec to exclude used cells.
+	var borderPool, inlandPool []int
 	for _, c := range cells {
 		if c.Terrain != "land" {
 			continue
 		}
 		cx, cy := c.Center.X, c.Center.Y
-		if cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist {
-			candidates = append(candidates, c.ID)
+		atBorder := cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist
+		atInland := cx >= inlandDist && cx <= w-inlandDist && cy >= inlandDist && cy <= h-inlandDist
+		if atBorder {
+			borderPool = append(borderPool, c.ID)
+		}
+		if atInland {
+			inlandPool = append(inlandPool, c.ID)
 		}
 	}
 
 	var rivers []River
 	used := make(map[int]bool)
+	targetInlandLen := math.Hypot(w, h) * 0.25
 
-	for id := 0; id < cfg.Terrain.RiverCount && len(candidates) > 0; id++ {
-		// Pick random unused candidate.
-		idx := rng.Intn(len(candidates))
-		srcID := candidates[idx]
-		candidates = append(candidates[:idx], candidates[idx+1:]...)
-		if used[srcID] {
+	for id, spec := range cfg.Terrain.Rivers {
+		// Pool by origin.
+		pool := borderPool
+		if spec.Origin == "inland" {
+			pool = inlandPool
+		}
+		// Pick unused random candidate.
+		var srcID int = -1
+		for attempts := 0; attempts < 30 && srcID == -1 && len(pool) > 0; attempts++ {
+			idx := rng.Intn(len(pool))
+			cand := pool[idx]
+			if !used[cand] && cells[cand].Terrain == "land" {
+				srcID = cand
+			}
+			pool = append(pool[:idx], pool[idx+1:]...)
+		}
+		if srcID == -1 {
 			continue
 		}
 
-		path := routeRiver(srcID, cells, diag.neighbors, w, h, used)
+		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec.End, targetInlandLen)
 		if len(path) < 2 {
 			continue
 		}
 
-		// Collect edge IDs along path.
+		// Edge IDs.
 		edgePath := make([]int, 0, len(path)-1)
 		for k := 0; k < len(path)-1; k++ {
 			a, b := path[k], path[k+1]
@@ -66,52 +85,75 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 			continue
 		}
 
-		// Mark cells.
 		for _, cid := range path {
 			cells[cid].River = true
 			cells[cid].Terrain = "water"
 			used[cid] = true
 		}
 
-		src := cells[path[0]].Center
-		mouth := cells[path[len(path)-1]].Center
+		width := spec.Width
+		if width == "" {
+			width = "medium"
+		}
 		rivers = append(rivers, River{
 			ID:     id,
 			Path:   edgePath,
-			Source: src,
-			Mouth:  mouth,
-			Width:  cfg.Terrain.RiverWidth,
+			Source: cells[path[0]].Center,
+			Mouth:  cells[path[len(path)-1]].Center,
+			Width:  width,
 		})
 	}
 	return rivers
 }
 
-// routeRiver does greedy routing from srcID toward water/edge.
-func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used map[int]bool) []int {
+// routeRiver greedy-routes from srcID. Termination depends on end:
+//   - "coast":   stop when water is reached (original behavior)
+//   - "inland":  stop after reaching ~targetLen Euclidean distance from source
+func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used map[int]bool, end string, targetLen float64) []int {
 	const maxSteps = 200
 	path := []int{srcID}
 	visited := map[int]bool{srcID: true}
 	cur := srcID
+	src := cells[srcID].Center
 
 	for step := 0; step < maxSteps; step++ {
 		c := cells[cur]
-		// Reached water — done.
-		if c.Terrain == "water" {
+
+		if end == "coast" && c.Terrain == "water" {
 			break
+		}
+		if end == "inland" {
+			d := math.Hypot(c.Center.X-src.X, c.Center.Y-src.Y)
+			if d >= targetLen && step >= 3 {
+				break
+			}
+			if c.Terrain == "water" {
+				// Reached water unexpectedly — still stop (avoids growing through water).
+				break
+			}
 		}
 
 		best := -1
 		bestScore := math.MaxFloat64
-
 		for _, nb := range neighbors[cur] {
 			if visited[nb] {
 				continue
 			}
 			nc := cells[nb]
-			// Score: prefer water, then cells closer to map edge.
-			score := distToEdge(nc.Center, w, h)
-			if nc.Terrain == "water" {
-				score -= 1e9
+			var score float64
+			switch end {
+			case "inland":
+				// Prefer cells farther from the source, away from map edges.
+				d := math.Hypot(nc.Center.X-src.X, nc.Center.Y-src.Y)
+				score = -d + (1 / (distToEdge(nc.Center, w, h) + 1))
+				if nc.Terrain == "water" {
+					score += 1e6 // avoid ending in water
+				}
+			default: // "coast"
+				score = distToEdge(nc.Center, w, h)
+				if nc.Terrain == "water" {
+					score -= 1e9
+				}
 			}
 			if used[nb] {
 				score += 500

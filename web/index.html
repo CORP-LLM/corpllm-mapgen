@@ -30,8 +30,8 @@
         </div>
         <div class="field">
           <label>Cells</label>
-          <input type="range" id="cfg-cells" min="100" max="2000" value="500">
-          <span class="range-val" id="cfg-cells-val">500</span>
+          <input type="range" id="cfg-cells" min="500" max="5000" step="50" value="1000">
+          <span class="range-val" id="cfg-cells-val">1000</span>
         </div>
         <div class="field">
           <label>Relax</label>
@@ -78,19 +78,8 @@
           </label>
         </div>
         <div id="rivers-opts">
-          <div class="field">
-            <label>Count</label>
-            <input type="range" id="cfg-river-count" min="0" max="20" value="3">
-            <span class="range-val" id="cfg-river-count-val">3</span>
-          </div>
-          <div class="field">
-            <label>Width</label>
-            <select id="cfg-river-width">
-              <option value="narrow">Narrow</option>
-              <option value="medium" selected>Medium</option>
-              <option value="wide">Wide</option>
-            </select>
-          </div>
+          <div id="rivers-list"></div>
+          <button id="btn-add-river" class="secondary add-btn">+ ADD RIVER</button>
         </div>
       </div>
 
@@ -102,19 +91,8 @@
           </label>
         </div>
         <div id="lakes-opts">
-          <div class="field">
-            <label>Count</label>
-            <input type="range" id="cfg-lake-count" min="0" max="20" value="5">
-            <span class="range-val" id="cfg-lake-count-val">5</span>
-          </div>
-          <div class="field">
-            <label>Size</label>
-            <select id="cfg-lake-size">
-              <option value="small">Small</option>
-              <option value="medium" selected>Medium</option>
-              <option value="large">Large</option>
-            </select>
-          </div>
+          <div id="lakes-list"></div>
+          <button id="btn-add-lake" class="secondary add-btn">+ ADD LAKE</button>
         </div>
       </div>
 
@@ -122,27 +100,65 @@
     </div>
   </aside>
 
-  <!-- Canvas area -->
-  <div id="canvas-wrap">
-    <canvas id="map-canvas"></canvas>
+  <!-- Main area -->
+  <div id="main">
+    <div id="canvas-wrap">
+      <canvas id="map-canvas"></canvas>
 
-    <div id="toolbar">
-      <button id="btn-import" class="secondary">IMPORT</button>
-      <button id="btn-export" class="secondary">EXPORT</button>
+      <div id="toolbar">
+        <button id="btn-import" class="secondary">IMPORT</button>
+        <button id="btn-export" class="secondary">EXPORT</button>
+      </div>
+
+      <div id="loading">
+        <div class="spinner"></div>
+      </div>
+
+      <div id="empty-state">
+        <div class="empty-icon">&#9671;</div>
+        <div>CONFIGURE AND GENERATE</div>
+      </div>
     </div>
 
-    <div id="loading">
-      <div class="spinner"></div>
+    <div id="legend-bar">
+      <div class="legend-item"><span class="swatch" style="background:#1b2e1b"></span>LAND</div>
+      <div class="legend-item"><span class="swatch" style="background:#0a1828"></span>WATER</div>
+      <div class="legend-item"><span class="swatch" style="background:#0e2238"></span>LAKE</div>
+      <div class="legend-item"><span class="swatch" style="background:#1a4e72"></span>RIVER</div>
+      <div class="legend-item"><span class="swatch line" style="background:#3a9ab8"></span>COAST</div>
+      <div id="statusbar"></div>
     </div>
-
-    <div id="empty-state">
-      <div class="empty-icon">&#9671;</div>
-      <div>CONFIGURE AND GENERATE</div>
-    </div>
-
-    <div id="statusbar"></div>
   </div>
 </div>
+
+<!-- Templates (not rendered) -->
+<template id="river-row-template">
+  <div class="dyn-row">
+    <select class="river-width">
+      <option value="narrow">Narrow</option>
+      <option value="medium" selected>Medium</option>
+      <option value="wide">Wide</option>
+    </select>
+    <select class="river-route">
+      <option value="border-coast" selected>Border&rarr;Coast</option>
+      <option value="inland-coast">Inland&rarr;Coast</option>
+      <option value="border-inland">Border&rarr;Inland</option>
+      <option value="inland-inland">Inland&rarr;Inland</option>
+    </select>
+    <button class="btn-remove" title="Remove">&times;</button>
+  </div>
+</template>
+
+<template id="lake-row-template">
+  <div class="dyn-row">
+    <select class="lake-size">
+      <option value="small">Small</option>
+      <option value="medium" selected>Medium</option>
+      <option value="large">Large</option>
+    </select>
+    <button class="btn-remove" title="Remove">&times;</button>
+  </div>
+</template>
 
 <input type="file" id="file-input" accept=".json" style="display:none">
 <script src="app.js"></script>

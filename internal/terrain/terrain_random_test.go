@@ -1,6 +1,7 @@
 package terrain
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -21,11 +22,16 @@ func randomConfig(seed int64) *Config {
 			CoastNoise:    0.5,
 			WaterRatio:    0.3,
 			RiversEnabled: true,
-			RiverCount:    3,
-			RiverWidth:    "medium",
-			LakesEnabled:  true,
-			LakeCount:     5,
-			LakeSize:      "medium",
+			Rivers: []RiverSpec{
+				{Width: "medium", Origin: "border", End: "coast"},
+				{Width: "medium", Origin: "border", End: "coast"},
+				{Width: "medium", Origin: "border", End: "coast"},
+			},
+			LakesEnabled: true,
+			Lakes: []LakeSpec{
+				{Size: "medium"}, {Size: "medium"}, {Size: "medium"},
+				{Size: "medium"}, {Size: "medium"},
+			},
 		},
 	}
 }
@@ -252,6 +258,92 @@ func TestLakeBordersNotCoastline(t *testing.T) {
 			if ca.River || cb.River {
 				t.Errorf("seed %d: edge %d is coastline but adjacent to river cell", cfg.Seed, e.ID)
 			}
+		}
+	}
+}
+
+// TestRiverOriginInland verifies rivers with Origin="inland" start away from
+// the map border (in the central region).
+func TestRiverOriginInland(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.LakesEnabled = false
+		cfg.Terrain.Rivers = []RiverSpec{
+			{Width: "wide", Origin: "inland", End: "coast"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Rivers) == 0 {
+			continue
+		}
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		inlandMargin := math.Min(w, h) * 0.3
+		src := tm.Rivers[0].Source
+		inX := src.X >= inlandMargin && src.X <= w-inlandMargin
+		inY := src.Y >= inlandMargin && src.Y <= h-inlandMargin
+		if !(inX && inY) {
+			t.Errorf("seed %d: inland river source (%.1f,%.1f) not inland (margin %.1f)",
+				cfg.Seed, src.X, src.Y, inlandMargin)
+		}
+	}
+}
+
+// TestRiverEndInland verifies rivers with End="inland" terminate on land.
+func TestRiverEndInland(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.LakesEnabled = false
+		cfg.Terrain.Rivers = []RiverSpec{
+			{Width: "narrow", Origin: "border", End: "inland"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Rivers) == 0 {
+			continue
+		}
+		// Mouth cell should not be coast water — it should be a river cell
+		// (land turned water) whose neighbors include normal land (not coast).
+		mouth := tm.Rivers[0].Mouth
+		w, h := float64(cfg.Width), float64(cfg.Height)
+		// Must not be at the map border.
+		margin := 5.0
+		atBorder := mouth.X <= margin || mouth.X >= w-margin || mouth.Y <= margin || mouth.Y >= h-margin
+		if atBorder {
+			t.Errorf("seed %d: inland-ending river mouth (%.1f,%.1f) at map border",
+				cfg.Seed, mouth.X, mouth.Y)
+		}
+	}
+}
+
+// TestLakeSizesHonored verifies per-lake size configurations result in
+// clusters of the expected approximate size.
+func TestLakeSizesHonored(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	cfg := randomConfig(rng.Int63())
+	cfg.Terrain.RiversEnabled = false
+	cfg.CellCount = 300
+	cfg.Terrain.Lakes = []LakeSpec{
+		{Size: "large"}, {Size: "small"}, {Size: "small"},
+	}
+	tm, err := Generate(cfg)
+	if err != nil {
+		t.Fatalf("seed %d: %v", cfg.Seed, err)
+	}
+	if len(tm.Lakes) < 2 {
+		t.Skipf("not enough lakes generated (got %d)", len(tm.Lakes))
+	}
+	// Large lake should be bigger than small lakes.
+	expectedBiggest := tm.Lakes[0].Area
+	for _, lk := range tm.Lakes[1:] {
+		if lk.Area > expectedBiggest {
+			t.Errorf("seed %d: small lake %d (size %d) is larger than large lake 0 (size %d)",
+				cfg.Seed, lk.ID, lk.Area, expectedBiggest)
 		}
 	}
 }

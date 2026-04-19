@@ -8,59 +8,64 @@ var lakeSizeMap = map[string]int{
 	"large":  15,
 }
 
-// generateLakes BFS-expands lake clusters on land cells.
+// generateLakes creates one lake per LakeSpec, each with its own size.
 func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Rand) []Lake {
-	targetSize := lakeSizeMap[cfg.Terrain.LakeSize]
-	if targetSize == 0 {
-		targetSize = 7
+	// Build a fresh candidate list (land cells not adjacent to water).
+	seedCandidates := func() []int {
+		var out []int
+		for _, c := range cells {
+			if c.Terrain != "land" {
+				continue
+			}
+			tooClose := false
+			for _, nb := range diag.neighbors[c.ID] {
+				if cells[nb].Terrain == "water" {
+					tooClose = true
+					break
+				}
+			}
+			if !tooClose {
+				out = append(out, c.ID)
+			}
+		}
+		return out
 	}
-
-	// Build a quick lookup: is cell already water?
-	isWater := func(id int) bool { return cells[id].Terrain == "water" }
 
 	var lakes []Lake
-	usedInLake := make(map[int]bool)
 
-	// Candidates: land cells not adjacent to existing water.
-	var candidates []int
-	for _, c := range cells {
-		if c.Terrain != "land" {
-			continue
+	for id, spec := range cfg.Terrain.Lakes {
+		targetSize := lakeSizeMap[spec.Size]
+		if targetSize == 0 {
+			targetSize = 7
 		}
-		tooClose := false
-		for _, nb := range diag.neighbors[c.ID] {
-			if isWater(nb) {
-				tooClose = true
+
+		candidates := seedCandidates() // refresh — previous lake may have changed the map
+
+		// Pick the first valid seed.
+		var seed int = -1
+		for len(candidates) > 0 {
+			idx := rng.Intn(len(candidates))
+			cand := candidates[idx]
+			candidates = append(candidates[:idx], candidates[idx+1:]...)
+			if cells[cand].Terrain != "land" {
+				continue
+			}
+			stillValid := true
+			for _, nb := range diag.neighbors[cand] {
+				if cells[nb].Terrain == "water" {
+					stillValid = false
+					break
+				}
+			}
+			if stillValid {
+				seed = cand
 				break
 			}
 		}
-		if !tooClose {
-			candidates = append(candidates, c.ID)
-		}
-	}
-
-	for id := 0; id < cfg.Terrain.LakeCount && len(candidates) > 0; id++ {
-		// Pick random seed cell.
-		idx := rng.Intn(len(candidates))
-		seed := candidates[idx]
-		candidates = append(candidates[:idx], candidates[idx+1:]...)
-		if usedInLake[seed] || cells[seed].Terrain == "water" {
-			continue
-		}
-		// Re-validate: seed must still have no water neighbors, in case a
-		// previous lake or late-stage assignment changed the map.
-		seedStillValid := true
-		for _, nb := range diag.neighbors[seed] {
-			if cells[nb].Terrain == "water" {
-				seedStillValid = false
-				break
-			}
-		}
-		if !seedStillValid {
+		if seed == -1 {
 			continue
 		}
 
-		// BFS expansion.
 		cluster := []int{seed}
 		queue := []int{seed}
 		inCluster := map[int]bool{seed: true}
@@ -69,11 +74,9 @@ func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Ra
 			cur := queue[0]
 			queue = queue[1:]
 			for _, nb := range diag.neighbors[cur] {
-				if inCluster[nb] || cells[nb].Terrain == "water" || usedInLake[nb] {
+				if inCluster[nb] || cells[nb].Terrain == "water" {
 					continue
 				}
-				// Keep the lake isolated: reject candidates that touch
-				// non-cluster water (coast, rivers, other lakes).
 				touchesOuterWater := false
 				for _, nnb := range diag.neighbors[nb] {
 					if !inCluster[nnb] && cells[nnb].Terrain == "water" {
@@ -93,11 +96,9 @@ func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Ra
 			}
 		}
 
-		// Mark cells as water.
 		for _, cid := range cluster {
 			cells[cid].Terrain = "water"
 			cells[cid].Lake = true
-			usedInLake[cid] = true
 		}
 
 		lakes = append(lakes, Lake{

@@ -17,11 +17,15 @@ func baseConfig() *Config {
 			CoastNoise:    0.5,
 			WaterRatio:    0.25,
 			RiversEnabled: true,
-			RiverCount:    2,
-			RiverWidth:    "medium",
-			LakesEnabled:  true,
-			LakeCount:     2,
-			LakeSize:      "medium",
+			Rivers: []RiverSpec{
+				{Width: "medium", Origin: "border", End: "coast"},
+				{Width: "medium", Origin: "border", End: "coast"},
+			},
+			LakesEnabled: true,
+			Lakes: []LakeSpec{
+				{Size: "medium"},
+				{Size: "medium"},
+			},
 		},
 	}
 }
@@ -209,6 +213,15 @@ func TestValidationRejectsInvalid(t *testing.T) {
 		{"width too large", func(c *Config) { c.Width = 99999 }},
 		{"bad coastSide", func(c *Config) { c.Terrain.CoastSide = "diagonal" }},
 		{"waterRatio >1", func(c *Config) { c.Terrain.WaterRatio = 1.5 }},
+		{"bad river width", func(c *Config) {
+			c.Terrain.Rivers = []RiverSpec{{Width: "xxl"}}
+		}},
+		{"bad river origin", func(c *Config) {
+			c.Terrain.Rivers = []RiverSpec{{Origin: "corner"}}
+		}},
+		{"bad lake size", func(c *Config) {
+			c.Terrain.Lakes = []LakeSpec{{Size: "huge"}}
+		}},
 	}
 	for _, tc := range cases {
 		cfg := baseConfig()
