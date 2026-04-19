@@ -36,11 +36,33 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 	}
 
 	// Partition land cells by zone once.
-	// Border sources must actually represent an upstream inflow: they need
-	// a border position AND high enough elevation that there's real terrain
-	// between them and the coast. A land cell next to the coast side doesn't
-	// qualify — that's just a short coastal rill, not a river from beyond.
-	const minBorderElev = 0.5
+	// Border sources represent upstream inflow — the river enters the map
+	// from beyond. Exclude cells on the coast-side border (those would be
+	// trivial coastal rills right next to the sea, not rivers from beyond).
+	isCoastSideBorder := func(cx, cy float64) bool {
+		if !cfg.Terrain.CoastEnabled {
+			return false
+		}
+		switch cfg.Terrain.CoastSide {
+		case "north":
+			return cy < borderDist
+		case "south":
+			return cy > h-borderDist
+		case "east":
+			return cx > w-borderDist
+		case "west":
+			return cx < borderDist
+		}
+		return false
+	}
+	hasWaterNeighbor := func(id int) bool {
+		for _, nb := range diag.neighbors[id] {
+			if cells[nb].Terrain == "water" {
+				return true
+			}
+		}
+		return false
+	}
 	var borderPool, inlandPool []int
 	for _, c := range cells {
 		if c.Terrain != "land" {
@@ -48,7 +70,9 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		}
 		cx, cy := c.Center.X, c.Center.Y
 		atBorder := cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist
-		if atBorder && c.Elevation >= minBorderElev {
+		// Skip border cells already touching water — they produce 2-cell
+		// "rivers" that dump straight into the sea.
+		if atBorder && !isCoastSideBorder(cx, cy) && !hasWaterNeighbor(c.ID) {
 			borderPool = append(borderPool, c.ID)
 		}
 		if cx >= inlandDist && cx <= w-inlandDist && cy >= inlandDist && cy <= h-inlandDist {
@@ -113,7 +137,9 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 
 		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec, tx, ty,
 			isCoastWater, isLakeWater, lakeCellIDs, rng)
-		if len(path) < 2 {
+		// Require a meaningful path — shorter than 5 cells is a coastal
+		// rill, not a river worth rendering.
+		if len(path) < 5 {
 			continue
 		}
 
@@ -293,11 +319,19 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 				score += dElev * uphillExtra
 			}
 
-			// End-type preferences modulate the downhill choice.
-			score += endPreferenceScore(nc, spec.End, w, h, isCoast, isLake, lakeIDs, cells)
+			// End-type preferences modulate the downhill choice. Tributary
+			// merging requires the candidate to be at least 20% of the map
+			// diagonal from the source — otherwise a second river would
+			// merge on step 1 and never develop its own path.
+			srcC := cells[srcID].Center
+			dFromSrc := math.Hypot(nc.Center.X-srcC.X, nc.Center.Y-srcC.Y)
+			score += endPreferenceScore(nc, spec.End, w, h, isCoast, isLake, lakeIDs, cells, dFromSrc, maxDim*0.20)
 
 			if used[nb] {
-				score += 500
+				// Light penalty — enough that rivers don't pointlessly overlap,
+				// but small enough that downhill routing isn't blocked when
+				// the only viable path borders an existing river.
+				score += 50
 			}
 			if alignWeight > 0 {
 				mx := nc.Center.X - curCenter.X
@@ -337,20 +371,25 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 
 // endPreferenceScore adds a bias on top of the downhill score so rivers
 // prefer the configured terminus when multiple downhill neighbors exist.
+// dFromSource = distance from this candidate to the river's source;
+// minTributaryDist = threshold below which tributary merges are disabled
+// (prevents a new river from instantly snapping onto an existing one).
 func endPreferenceScore(nc *Cell, end string, w, h float64,
-	isCoast, isLake func(*Cell) bool, lakeIDs []int, cells []Cell) float64 {
+	isCoast, isLake func(*Cell) bool, lakeIDs []int, cells []Cell,
+	dFromSource, minTributaryDist float64) float64 {
 
-	// Any existing river cell is a valid tributary terminus — slightly less
-	// preferred than the configured end-type, but still strong attractor
-	// so rivers naturally merge when they meet.
-	const tributaryBonus = -5e8
+	// Any existing river cell can be a tributary terminus — but only once
+	// the candidate is far enough from this river's source. Otherwise a
+	// second river would merge on step 1 and never develop its own path.
+	const tributaryBonus = -3e8
+	allowTributary := dFromSource >= minTributaryDist
 
 	switch end {
 	case "coast":
 		if isCoast(nc) {
 			return -1e9
 		}
-		if nc.River {
+		if nc.River && allowTributary {
 			return tributaryBonus
 		}
 		if isLake(nc) {
@@ -360,7 +399,7 @@ func endPreferenceScore(nc *Cell, end string, w, h float64,
 		if isLake(nc) {
 			return -1e9
 		}
-		if nc.River {
+		if nc.River && allowTributary {
 			return tributaryBonus
 		}
 		if isCoast(nc) {
@@ -374,7 +413,7 @@ func endPreferenceScore(nc *Cell, end string, w, h float64,
 		if nc.Terrain == "water" {
 			return 5000
 		}
-		if nc.River {
+		if nc.River && allowTributary {
 			return tributaryBonus
 		}
 		return distToEdge(nc.Center, w, h) * 3
