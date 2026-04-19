@@ -36,13 +36,19 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 	}
 
 	// Partition land cells by zone once.
+	// Border sources must actually represent an upstream inflow: they need
+	// a border position AND high enough elevation that there's real terrain
+	// between them and the coast. A land cell next to the coast side doesn't
+	// qualify — that's just a short coastal rill, not a river from beyond.
+	const minBorderElev = 0.5
 	var borderPool, inlandPool []int
 	for _, c := range cells {
 		if c.Terrain != "land" {
 			continue
 		}
 		cx, cy := c.Center.X, c.Center.Y
-		if cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist {
+		atBorder := cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist
+		if atBorder && c.Elevation >= minBorderElev {
 			borderPool = append(borderPool, c.ID)
 		}
 		if cx >= inlandDist && cx <= w-inlandDist && cy >= inlandDist && cy <= h-inlandDist {
