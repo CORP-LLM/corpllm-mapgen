@@ -41,6 +41,7 @@ func Generate(cfg *Config) (*Terrain, error) {
 	// 5. Terrain assignment.
 	if cfg.Terrain.CoastEnabled {
 		assignCoast(cells, cfg, rng)
+		removeInlandWater(cells, diag, cfg)
 	}
 
 	// 6. Build edges.
