@@ -235,12 +235,23 @@ async function loadTerrain() {
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k}=${v}`).join(' · ');
 
+  // Suitability summary (P2 feature — city-placement score).
+  const landSuits = terrain.cells
+    .filter(c => c.terrain === 'land' && c.suitability != null)
+    .map(c => c.suitability);
+  const suitSummary = landSuits.length
+    ? `avg ${(landSuits.reduce((s,x)=>s+x,0)/landSuits.length).toFixed(2)} · ` +
+      `prime (≥0.8): ${landSuits.filter(s=>s>=0.8).length} cells`
+    : 'n/a';
+
   status.innerHTML =
-    `<span class="ok">Loaded seed ${terrain.meta.seed}</span><br>` +
+    `<span class="ok">Loaded seed ${terrain.meta.seed}</span>` +
+    ` <span class="stat">· schema ${terrain.meta.schemaVersion || '?'}</span><br>` +
     `cells: ${terrain.cells.length} · rivers: ${(terrain.rivers||[]).length} · ` +
     `lakes: ${(terrain.lakes||[]).length} · highways: ${(terrain.highways||[]).length}<br>` +
     `worldScale: ${terrain.meta.worldScale} m/unit<br>` +
-    `biomes: ${biomeLine}`;
+    `biomes: ${biomeLine}<br>` +
+    `suitability: ${suitSummary}`;
 }
 
 document.getElementById('btn-regen').addEventListener('click', loadTerrain);

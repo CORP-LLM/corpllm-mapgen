@@ -13,6 +13,10 @@ type Point struct {
 // VertexElevations is parallel to Vertices — each entry is the average
 // elevation across all cells sharing that Voronoi vertex. Clients use
 // these for smooth mesh rendering (avoids flat-topped stepped terrain).
+// Suitability ∈ [0,1] scores how appropriate this cell is for urban
+// development (sector/building placement by the CityGraph generator).
+// 0 = uninhabitable (water, peaks). 1 = prime city land (flat grassland
+// near water or highway).
 type Cell struct {
 	ID               int       `json:"id"`
 	Center           Point     `json:"center"`
@@ -21,6 +25,7 @@ type Cell struct {
 	Terrain          string    `json:"terrain"`
 	Elevation        float64   `json:"elevation"`
 	Biome            string    `json:"biome"`
+	Suitability      float64   `json:"suitability"`
 	Neighbors        []int     `json:"neighbors"`
 	River            bool      `json:"river"`
 	Lake             bool      `json:"lake"`

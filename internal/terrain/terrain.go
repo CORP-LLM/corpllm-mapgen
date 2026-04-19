@@ -102,6 +102,10 @@ func Generate(cfg *Config) (*Terrain, error) {
 	// vertex so clients can build smooth meshes (no stepped flat-top cells).
 	computeVertexElevations(cells)
 
+	// 13. Suitability score per cell — used by the CityGraph generator to
+	// decide where to place sectors/buildings.
+	assignSuitability(cells, diag.neighbors, highways)
+
 	id := fmt.Sprintf("t_%08x", rng.Uint32())
 	return &Terrain{
 		Meta: Meta{

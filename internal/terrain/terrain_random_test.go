@@ -827,6 +827,124 @@ func TestHighwayAvoidsWaterWhenLandAvailable(t *testing.T) {
 	}
 }
 
+// TestSuitabilityInvariants verifies the basic invariants of the city
+// placement score: range [0,1], water = 0, rivers = 0, grassland beats
+// mountain on average.
+func TestSuitabilityInvariants(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 5; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		var grasslandSum, mountainSum float64
+		var grasslandN, mountainN int
+		for _, c := range tm.Cells {
+			if c.Suitability < 0 || c.Suitability > 1 {
+				t.Errorf("seed %d: cell %d suitability %.3f out of [0,1]",
+					cfg.Seed, c.ID, c.Suitability)
+			}
+			if c.Terrain == "water" && c.Suitability != 0 {
+				t.Errorf("seed %d: water cell %d has suitability %.3f (want 0)",
+					cfg.Seed, c.ID, c.Suitability)
+			}
+			if c.River && c.Suitability != 0 {
+				t.Errorf("seed %d: river cell %d has suitability %.3f (want 0)",
+					cfg.Seed, c.ID, c.Suitability)
+			}
+			if c.Biome == BiomeGrassland {
+				grasslandSum += c.Suitability
+				grasslandN++
+			}
+			if c.Biome == BiomeMountain || c.Biome == BiomePeak {
+				mountainSum += c.Suitability
+				mountainN++
+			}
+		}
+		if grasslandN == 0 || mountainN == 0 {
+			continue
+		}
+		g := grasslandSum / float64(grasslandN)
+		m := mountainSum / float64(mountainN)
+		if g <= m {
+			t.Errorf("seed %d: grassland avg suitability %.3f not > mountain/peak %.3f",
+				cfg.Seed, g, m)
+		}
+	}
+}
+
+// TestSuitabilityNearHighwayBoost verifies highway-adjacent land cells
+// score higher than the average land cell (on the same seed).
+func TestSuitabilityNearHighwayBoost(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var boosted, tries int
+	for i := 0; i < 6; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.HighwaysEnabled = true
+		cfg.Terrain.Highways = []HighwaySpec{
+			{From: "north", To: "south"},
+			{From: "west", To: "east"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Highways) == 0 {
+			continue
+		}
+		hwCells := make(map[int]bool)
+		for _, hw := range tm.Highways {
+			for _, cid := range hw.CellPath {
+				hwCells[cid] = true
+			}
+		}
+		neighbors := make(map[int][]int, len(tm.Cells))
+		for _, e := range tm.Edges {
+			neighbors[e.Cells[0]] = append(neighbors[e.Cells[0]], e.Cells[1])
+			neighbors[e.Cells[1]] = append(neighbors[e.Cells[1]], e.Cells[0])
+		}
+		var nearHw, elsewhere float64
+		var nh, oh int
+		for _, c := range tm.Cells {
+			if c.Terrain != "land" || c.River {
+				continue
+			}
+			adj := false
+			for _, nb := range neighbors[c.ID] {
+				if hwCells[nb] {
+					adj = true
+					break
+				}
+			}
+			if adj {
+				nearHw += c.Suitability
+				nh++
+			} else {
+				elsewhere += c.Suitability
+				oh++
+			}
+		}
+		if nh == 0 || oh == 0 {
+			continue
+		}
+		tries++
+		if nearHw/float64(nh) > elsewhere/float64(oh) {
+			boosted++
+		}
+	}
+	if tries == 0 {
+		t.Skip("no highway samples")
+	}
+	// Highway-adjacent cells should average HIGHER suitability in the
+	// majority of seeds. A strict per-seed check would be flaky because
+	// highways sometimes cross mountains.
+	if boosted*2 < tries {
+		t.Errorf("highway-boost: only %d of %d seeds showed the expected bump",
+			boosted, tries)
+	}
+}
+
 // TestVertexElevationsShared verifies shared vertices across cells get the
 // same VertexElevations value — clients relying on these for smooth meshes
 // need the elevation at each shared corner to match exactly.

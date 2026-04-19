@@ -56,7 +56,7 @@
     },
     "Cell": {
       "type": "object",
-      "required": ["id", "center", "vertices", "vertexElevations", "terrain", "elevation", "biome", "neighbors"],
+      "required": ["id", "center", "vertices", "vertexElevations", "terrain", "elevation", "biome", "suitability", "neighbors"],
       "properties": {
         "id":               { "type": "integer" },
         "center":           { "$ref": "#/$defs/Point" },
@@ -65,6 +65,7 @@
         "terrain":          { "type": "string", "enum": ["land", "water"] },
         "elevation":        { "type": "number", "minimum": -1, "maximum": 1, "description": "Normalized height at the cell CENTER. Land > 0, water ≤ 0 (depth increases toward -1). For vertex heights, use vertexElevations." },
         "biome":            { "$ref": "#/$defs/Biome" },
+        "suitability":      { "type": "number", "minimum": 0, "maximum": 1, "description": "How suitable this cell is for urban development. 0 = water or peak (unbuildable), 1 = prime city land (flat grassland near water and highway). CityGraph generator uses this to place sectors." },
         "neighbors":        { "type": "array", "items": { "type": "integer" } },
         "river":            { "type": "boolean" },
         "lake":             { "type": "boolean" },
