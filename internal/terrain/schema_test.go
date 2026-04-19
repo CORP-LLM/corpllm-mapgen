@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // TestSchemaParses ensures the published JSON Schema at schema/terrain.schema.json
@@ -35,6 +38,65 @@ func TestSchemaParses(t *testing.T) {
 	} {
 		if _, ok := defs[must]; !ok {
 			t.Errorf("$defs missing required type %q", must)
+		}
+	}
+}
+
+// TestGeneratedTerrainValidatesAgainstSchema catches drift between the Go
+// types and the published JSON Schema — every generated terrain must
+// validate cleanly against schema/terrain.schema.json.
+//
+// Without this, a field added to a Go struct (or a changed enum value)
+// could silently ship to clients that still validate the old schema.
+func TestGeneratedTerrainValidatesAgainstSchema(t *testing.T) {
+	schemaPath := filepath.Join("..", "..", "schema", "terrain.schema.json")
+	raw, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(strings.NewReader(string(raw)))
+	if err != nil {
+		t.Fatalf("parse schema: %v", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("terrain.schema.json", doc); err != nil {
+		t.Fatalf("add schema resource: %v", err)
+	}
+	sch, err := compiler.Compile("terrain.schema.json")
+	if err != nil {
+		t.Fatalf("compile schema: %v", err)
+	}
+
+	// Generate with multiple config variants so every optional branch of
+	// the schema is hit: no coast, no lakes, no rivers, highways, etc.
+	variants := []func(*Config){
+		func(c *Config) {}, // default
+		func(c *Config) { c.Terrain.CoastEnabled = false },
+		func(c *Config) { c.Terrain.LakesEnabled = false; c.Terrain.Lakes = nil },
+		func(c *Config) { c.Terrain.RiversEnabled = false; c.Terrain.Rivers = nil },
+		func(c *Config) {
+			c.Terrain.HighwaysEnabled = true
+			c.Terrain.Highways = []HighwaySpec{{From: "north", To: "south"}}
+		},
+		func(c *Config) { c.Terrain.Roughness = 0.2 }, // flat terrain
+	}
+	for i, mutate := range variants {
+		cfg := baseConfig()
+		mutate(cfg)
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("variant %d: generate: %v", i, err)
+		}
+		b, err := json.Marshal(tm)
+		if err != nil {
+			t.Fatalf("variant %d: marshal: %v", i, err)
+		}
+		var instance interface{}
+		if err := json.Unmarshal(b, &instance); err != nil {
+			t.Fatalf("variant %d: unmarshal for validation: %v", i, err)
+		}
+		if err := sch.Validate(instance); err != nil {
+			t.Errorf("variant %d: schema validation failed:\n%v", i, err)
 		}
 	}
 }
