@@ -302,8 +302,14 @@ function render() {
     } else {
       rgb = waterRgb(cell.elevation || 0);
     }
-    ctx.fillStyle = rgbToCss(rgb);
+    const css = rgbToCss(rgb);
+    ctx.fillStyle = css;
     ctx.fill();
+    // Same-color 1px stroke hides sub-pixel AA seams between adjacent cells.
+    // Without this the map shows faint "outlines" even with Show-edges off.
+    ctx.strokeStyle = css;
+    ctx.lineWidth = 1.2 / view.scale;
+    ctx.stroke();
   }
 
   // Cell edges — batched by type, smoothed. Skip entirely if disabled.
@@ -376,9 +382,10 @@ function render() {
     ctx.stroke();
   }
 
-  // River flow overlay — thin at source, wider at mouth (flow accumulation).
-  // Border-origin sources extend to the map edge (river enters from beyond
-  // the map) — inland sources get a spring dot.
+  // River border extension — for origin=border rivers, draw a short stroke
+  // from the source cell's center to the nearest map edge so the river
+  // visibly "enters" the map. Uses the river cell fill color so it blends
+  // into the river rather than adding a highlight stripe.
   if (terrain.rivers && terrain.rivers.length > 0) {
     const bw = terrain.bounds.width, bh = terrain.bounds.height;
     const BORDER_M = 40;
@@ -393,46 +400,20 @@ function render() {
       ];
       return opts.reduce((a, b) => a.d < b.d ? a : b);
     };
-
-    ctx.strokeStyle = '#2e7aa8';
-    ctx.fillStyle = '#3a8fc0';
+    ctx.strokeStyle = C.riverCell;
     ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     for (const river of terrain.rivers) {
       const cp = river.cellPath;
       if (!cp || cp.length < 2) continue;
-      const baseW = { narrow: 2.5, medium: 4.5, wide: 8 }[river.width] || 4.5;
       const src = cellById.get(cp[0]);
-      if (!src) continue;
-      const borderOrigin = atMapBorder(src.center);
-
-      if (borderOrigin) {
-        // Stroke out to the map edge at the source width.
-        const entry = nearestBorder(src.center);
-        ctx.lineWidth = baseW * 0.4;
-        ctx.beginPath();
-        ctx.moveTo(entry.x, entry.y);
-        ctx.lineTo(src.center.x, src.center.y);
-        ctx.stroke();
-      } else {
-        // Spring dot marks an inland source.
-        ctx.beginPath();
-        ctx.arc(src.center.x, src.center.y, baseW * 0.45, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      for (let i = 0; i < cp.length - 1; i++) {
-        const ca = cellById.get(cp[i]);
-        const cb = cellById.get(cp[i + 1]);
-        if (!ca || !cb) continue;
-        // Flow 0..1 along the path; min 0.4 so the source is legible.
-        const flow = 0.4 + 0.6 * ((i + 1) / cp.length);
-        ctx.lineWidth = baseW * flow;
-        ctx.beginPath();
-        ctx.moveTo(ca.center.x, ca.center.y);
-        ctx.lineTo(cb.center.x, cb.center.y);
-        ctx.stroke();
-      }
+      if (!src || !atMapBorder(src.center)) continue;
+      const w = { narrow: 5, medium: 7, wide: 10 }[river.width] || 7;
+      const entry = nearestBorder(src.center);
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(entry.x, entry.y);
+      ctx.lineTo(src.center.x, src.center.y);
+      ctx.stroke();
     }
   }
 
