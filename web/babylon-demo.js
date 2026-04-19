@@ -130,11 +130,28 @@ function buildBiomeMesh(biome, cells) {
 
 // ── Rivers & highways as tubes along their spline curves ─────────────────────
 
-function buildRivers(terrain) {
+// Look up the elevation under a 2D point by finding the nearest cell in
+// a small candidate pool (the path cells). Good enough for positioning
+// tube geometry at the terrain surface without building a spatial index.
+function elevAtPoint(pt, cellPath, cellById) {
+  let bestD = Infinity, bestCell = null;
+  for (const cid of cellPath) {
+    const c = cellById.get(cid);
+    if (!c) continue;
+    const dx = c.center.x - pt.x, dy = c.center.y - pt.y;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; bestCell = c; }
+  }
+  return bestCell ? (bestCell.elevation || 0) : 0;
+}
+
+function buildRivers(terrain, cellById) {
   const tubes = [];
   for (const river of terrain.rivers || []) {
-    const curve = (river.curve || []).map(p => new B.Vector3(p.x, 3, p.y));
-    if (curve.length < 2) continue;
+    if (!river.curve || river.curve.length < 2) continue;
+    // Rivers are water cells (elevation clamped to 0) — sit just above the
+    // water surface so the tube isn't z-fighting with the water mesh.
+    const curve = river.curve.map(p => new B.Vector3(p.x, 1.5, p.y));
     const radius = { narrow: 2, medium: 3.5, wide: 6 }[river.width] || 3.5;
     const tube = B.MeshBuilder.CreateTube(`river_${river.id}`, {
       path: curve, radius, cap: B.Mesh.CAP_ALL, updatable: false,
@@ -148,11 +165,17 @@ function buildRivers(terrain) {
   return tubes;
 }
 
-function buildHighways(terrain) {
+function buildHighways(terrain, cellById) {
   const tubes = [];
   for (const hw of terrain.highways || []) {
-    const curve = (hw.curve || []).map(p => new B.Vector3(p.x, 2.5, p.y));
-    if (curve.length < 2) continue;
+    if (!hw.curve || hw.curve.length < 2) continue;
+    // Ride the terrain: Y follows the underlying cell elevation plus a
+    // small lift so the tube clears the ground.
+    const curve = hw.curve.map(p => {
+      const e = elevAtPoint(p, hw.cellPath, cellById);
+      const y = (e >= 0 ? e * HEIGHT_SCALE : 0) + 2.5;
+      return new B.Vector3(p.x, y, p.y);
+    });
     const tube = B.MeshBuilder.CreateTube(`hw_${hw.id}`, {
       path: curve, radius: 4, cap: B.Mesh.CAP_ALL,
     }, scene);
@@ -223,9 +246,10 @@ async function loadTerrain() {
   }
 
   clearScene();
+  const cellById = new Map(terrain.cells.map(c => [c.id, c]));
   const cellMeshes = buildCellMeshes(terrain);
-  const rivers     = buildRivers(terrain);
-  const highways   = buildHighways(terrain);
+  const rivers     = buildRivers(terrain, cellById);
+  const highways   = buildHighways(terrain, cellById);
   currentMeshes = [...cellMeshes, ...rivers, ...highways];
   framCamera(terrain);
 
