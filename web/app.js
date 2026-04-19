@@ -2,8 +2,14 @@
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let terrain = null;
-let edgeById  = new Map();
-let cellById  = new Map();
+let edgeById        = new Map();
+let cellById        = new Map();
+let smoothedCells   = new Map(); // cellID -> [pt, pt, ...] smoothed polygon
+let smoothedEdges   = new Map(); // edgeID -> [pt, pt, ...] smoothed polyline
+
+// Smoothing parameters
+const SMOOTH_SUBDIV = 6;    // points inserted per original edge
+const SMOOTH_AMOUNT = 0.12; // perpendicular offset as fraction of edge length
 const view = { x: 0, y: 0, scale: 1 };
 let dragging = false;
 let dragStart = { x: 0, y: 0 };
@@ -37,6 +43,83 @@ const C = {
   coast:      '#3a9ab8',
 };
 
+// ── Organic smoothing ─────────────────────────────────────────────────────────
+// Each Voronoi edge gets subdivided with perpendicular noise offsets. Noise
+// depends only on canonical-sorted edge endpoints, so adjacent cells agree on
+// the shared edge — topology preserved, no gaps.
+
+function noise2D(x, y) {
+  return Math.sin(x * 0.11 + y * 0.17) * 0.55
+       + Math.sin(x * 0.27 - y * 0.19) * 0.35
+       + Math.sin(x * 0.43 + y * 0.51) * 0.10;
+}
+
+function subdividedEdge(a, b) {
+  // Canonical order → identical result regardless of traversal direction.
+  const reversed = a.x > b.x || (a.x === b.x && a.y > b.y);
+  const v1 = reversed ? b : a;
+  const v2 = reversed ? a : b;
+  const dx = v2.x - v1.x, dy = v2.y - v1.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return [a, b];
+  const px = -dy / len, py = dx / len;
+  const pts = [v1];
+  for (let k = 1; k < SMOOTH_SUBDIV; k++) {
+    const t = k / SMOOTH_SUBDIV;
+    const mx = v1.x + dx * t;
+    const my = v1.y + dy * t;
+    const n = noise2D(mx, my);
+    pts.push({
+      x: mx + px * n * SMOOTH_AMOUNT * len,
+      y: my + py * n * SMOOTH_AMOUNT * len,
+    });
+  }
+  pts.push(v2);
+  if (reversed) pts.reverse();
+  return pts;
+}
+
+function preprocessSmooth() {
+  smoothedEdges.clear();
+  smoothedCells.clear();
+  for (const e of terrain.edges) {
+    smoothedEdges.set(e.id, subdividedEdge(e.vertices[0], e.vertices[1]));
+  }
+  for (const c of terrain.cells) {
+    const v = c.vertices;
+    if (!v || v.length < 3) continue;
+    const poly = [];
+    for (let i = 0; i < v.length; i++) {
+      const pts = subdividedEdge(v[i], v[(i + 1) % v.length]);
+      for (let j = 0; j < pts.length - 1; j++) poly.push(pts[j]);
+    }
+    smoothedCells.set(c.id, poly);
+  }
+}
+
+function pathPolyline(pts) {
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+}
+
+// Smooth a closed polygon with quadratic curves through edge midpoints.
+// Control points are the polygon vertices; the curve passes through midpoints.
+// This rounds off the subdivision sawtooth into flowing curves.
+function pathSmoothClosed(pts) {
+  const n = pts.length;
+  if (n < 3) return pathPolyline(pts);
+  const m0x = (pts[0].x + pts[1].x) / 2;
+  const m0y = (pts[0].y + pts[1].y) / 2;
+  ctx.moveTo(m0x, m0y);
+  for (let i = 1; i < n; i++) {
+    const j = (i + 1) % n;
+    const mx = (pts[i].x + pts[j].x) / 2;
+    const my = (pts[i].y + pts[j].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.quadraticCurveTo(pts[0].x, pts[0].y, m0x, m0y);
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function fitView() {
   const pad = 24;
@@ -59,13 +142,12 @@ function render() {
 
   const lakeCellSet = buildLakeSet();
 
-  // Fill cells
+  // Fill cells — smoothed polygon (linear through subdivided points).
   for (const cell of terrain.cells) {
-    const v = cell.vertices;
-    if (!v || v.length < 3) continue;
+    const poly = smoothedCells.get(cell.id);
+    if (!poly || poly.length < 3) continue;
     ctx.beginPath();
-    ctx.moveTo(v[0].x, v[0].y);
-    for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+    pathPolyline(poly);
     ctx.closePath();
     if (cell.river) {
       ctx.fillStyle = C.riverCell;
@@ -77,9 +159,8 @@ function render() {
     ctx.fill();
   }
 
-  // Cell edges — batched by type
-  const lw = 0.7 / view.scale;
-  ctx.lineWidth = lw;
+  // Cell edges — batched by type, smoothed.
+  ctx.lineWidth = 0.7 / view.scale;
 
   // land-land (non-river)
   ctx.beginPath();
@@ -88,8 +169,7 @@ function render() {
     if (e.coastline || e.type !== 'land-land') continue;
     const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
     if (ca && ca.river || cb && cb.river) continue;
-    ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
-    ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
+    pathPolyline(smoothedEdges.get(e.id));
   }
   ctx.stroke();
 
@@ -101,8 +181,7 @@ function render() {
     const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
     if (!ca || !cb) continue;
     if (!ca.river && !cb.river) continue;
-    ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
-    ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
+    pathPolyline(smoothedEdges.get(e.id));
   }
   ctx.stroke();
 
@@ -113,8 +192,7 @@ function render() {
     if (e.coastline || e.type !== 'water-water') continue;
     const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
     if (ca && ca.river || cb && cb.river) continue;
-    ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
-    ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
+    pathPolyline(smoothedEdges.get(e.id));
   }
   ctx.stroke();
 
@@ -122,14 +200,17 @@ function render() {
   if (terrain.coastline && terrain.coastline.edges.length > 0) {
     ctx.lineWidth = 1.8 / view.scale;
     ctx.strokeStyle = C.coast;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
     for (const eid of terrain.coastline.edges) {
-      const e = edgeById.get(eid);
-      if (!e) continue;
-      ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
-      ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
+      const pts = smoothedEdges.get(eid);
+      if (!pts) continue;
+      pathPolyline(pts);
     }
     ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
   }
 
   ctx.restore();
@@ -298,6 +379,7 @@ function loadTerrain(t) {
   terrain   = t;
   edgeById  = new Map((t.edges || []).map(e => [e.id, e]));
   cellById  = new Map((t.cells || []).map(c => [c.id, c]));
+  preprocessSmooth();
   showEmpty(false);
   fitView();
   render();
