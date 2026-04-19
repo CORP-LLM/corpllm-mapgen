@@ -97,6 +97,16 @@ function landRgb(elev) {
   ]);
 }
 
+// Beach biome: sandy tan, independent of raw elevation. Shoreline cells
+// are too low-elev to read as "land" in the elevation gradient (they'd
+// come out forest-green), so we override.
+function landColorForCell(cell) {
+  if (cell.biome === 'beach') {
+    return [182, 162, 118];
+  }
+  return landRgb(cell.elevation);
+}
+
 // Water depth: shallow (near land) is brighter teal, deep ocean is near-black.
 function waterRgb(elev) {
   const d = Math.max(0, Math.min(1, -elev));
@@ -295,7 +305,7 @@ function render() {
     if (cell.river) {
       rgb = hexRgb(C.riverCell);
     } else if (cell.terrain === 'land') {
-      rgb = landRgb(cell.elevation || 0);
+      rgb = landColorForCell(cell);
       if (render_.hillshade) {
         // Shade ∈ [-0.15, 0.15] after clamp; ×7 gives brightness ≈ [0, 2.0],
         // stronger than before so terrain relief is visible at low zoom.
