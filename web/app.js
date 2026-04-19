@@ -96,15 +96,24 @@ function noise2D(x, y) {
 }
 
 function subdividedEdge(a, b) {
-  // Clamp endpoints to map bounds — Voronoi clipping may leave float slop.
+  // Clamp AND snap endpoints to map bounds — Voronoi clipping leaves float
+  // slop that shows up as 1-pixel stair-steps along the border at high zoom.
+  // Any vertex within SNAP of a border is pulled onto it exactly so all
+  // adjacent cells share identical border coordinates.
   const bw = terrain ? terrain.bounds.width : Infinity;
   const bh = terrain ? terrain.bounds.height : Infinity;
-  const clampPt = p => ({
-    x: Math.max(0, Math.min(bw, p.x)),
-    y: Math.max(0, Math.min(bh, p.y)),
-  });
-  a = clampPt(a);
-  b = clampPt(b);
+  const SNAP = 6.0;
+  const fix = p => {
+    let x = Math.max(0, Math.min(bw, p.x));
+    let y = Math.max(0, Math.min(bh, p.y));
+    if (x < SNAP) x = 0;
+    else if (x > bw - SNAP) x = bw;
+    if (y < SNAP) y = 0;
+    else if (y > bh - SNAP) y = bh;
+    return { x, y };
+  };
+  a = fix(a);
+  b = fix(b);
 
   // Canonical order → identical result regardless of traversal direction.
   const reversed = a.x > b.x || (a.x === b.x && a.y > b.y);
@@ -112,15 +121,16 @@ function subdividedEdge(a, b) {
   const v2 = reversed ? a : b;
   const dx = v2.x - v1.x, dy = v2.y - v1.y;
   const len = Math.hypot(dx, dy);
-  if (len < 0.5 || render_.subdiv < 2) return reversed ? [b, a] : [a, b];
+  // Early returns must honor the caller's direction (a → b), not the
+  // canonical sorted one. Returning [b, a] here was skipping vertices in
+  // adjacent cell polygons and leaving visible triangular gaps.
+  if (len < 0.5 || render_.subdiv < 2) return [a, b];
 
-  // Any endpoint on the map border → keep edge straight. Wiggling a
-  // border-touching edge either pushes it past the map rectangle or (after
-  // clamp) creates a ragged zigzag along the border. Clean rectangle wins.
+  // Any endpoint on the map border → keep edge straight.
   const m = 1.5;
   const atBorderA = v1.x <= m || v1.x >= bw - m || v1.y <= m || v1.y >= bh - m;
   const atBorderB = v2.x <= m || v2.x >= bw - m || v2.y <= m || v2.y >= bh - m;
-  if (atBorderA || atBorderB) return reversed ? [b, a] : [a, b];
+  if (atBorderA || atBorderB) return [a, b];
 
   const px = -dy / len, py = dx / len;
   const pts = [v1];
