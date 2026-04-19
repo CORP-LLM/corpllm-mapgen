@@ -114,11 +114,13 @@ function subdividedEdge(a, b) {
   const len = Math.hypot(dx, dy);
   if (len < 0.5 || render_.subdiv < 2) return reversed ? [b, a] : [a, b];
 
-  // Both endpoints on the map border → keep edge straight (no wiggle).
+  // Any endpoint on the map border → keep edge straight. Wiggling a
+  // border-touching edge either pushes it past the map rectangle or (after
+  // clamp) creates a ragged zigzag along the border. Clean rectangle wins.
   const m = 1.5;
   const atBorderA = v1.x <= m || v1.x >= bw - m || v1.y <= m || v1.y >= bh - m;
   const atBorderB = v2.x <= m || v2.x >= bw - m || v2.y <= m || v2.y >= bh - m;
-  if (atBorderA && atBorderB) return reversed ? [b, a] : [a, b];
+  if (atBorderA || atBorderB) return reversed ? [b, a] : [a, b];
 
   const px = -dy / len, py = dx / len;
   const pts = [v1];
