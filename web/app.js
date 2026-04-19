@@ -2,7 +2,8 @@
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let terrain = null;
-let edgeById = new Map();
+let edgeById  = new Map();
+let cellById  = new Map();
 const view = { x: 0, y: 0, scale: 1 };
 let dragging = false;
 let dragStart = { x: 0, y: 0 };
@@ -24,15 +25,16 @@ window.addEventListener('resize', resizeCanvas);
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
-  bg:        '#050a14',
-  land:      '#1b2e1b',
-  landEdge:  '#203525',
-  water:     '#0a1828',
-  waterEdge: '#0c1e2c',
-  lake:      '#0e2238',
-  lakeEdge:  '#102640',
-  coast:     '#3a9ab8',
-  river:     '#1e6a9e',
+  bg:         '#050a14',
+  land:       '#1b2e1b',
+  landEdge:   '#203525',
+  water:      '#0a1828',
+  waterEdge:  '#0c1e2c',
+  lake:       '#0e2238',
+  lakeEdge:   '#102640',
+  riverCell:  '#1a4e72',
+  riverEdge:  '#1c5880',
+  coast:      '#3a9ab8',
 };
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -65,9 +67,13 @@ function render() {
     ctx.moveTo(v[0].x, v[0].y);
     for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
     ctx.closePath();
-    ctx.fillStyle = cell.terrain === 'land'
-      ? C.land
-      : (lakeCellSet.has(cell.id) ? C.lake : C.water);
+    if (cell.river) {
+      ctx.fillStyle = C.riverCell;
+    } else if (cell.terrain === 'land') {
+      ctx.fillStyle = C.land;
+    } else {
+      ctx.fillStyle = lakeCellSet.has(cell.id) ? C.lake : C.water;
+    }
     ctx.fill();
   }
 
@@ -75,15 +81,32 @@ function render() {
   const lw = 0.7 / view.scale;
   ctx.lineWidth = lw;
 
+  // land-land (non-river)
   ctx.beginPath();
   ctx.strokeStyle = C.landEdge;
   for (const e of terrain.edges) {
     if (e.coastline || e.type !== 'land-land') continue;
+    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+    if (ca && ca.river || cb && cb.river) continue;
     ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
     ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
   }
   ctx.stroke();
 
+  // river cell borders
+  ctx.beginPath();
+  ctx.strokeStyle = C.riverEdge;
+  for (const e of terrain.edges) {
+    if (e.coastline) continue;
+    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+    if (!ca || !cb) continue;
+    if (!ca.river && !cb.river) continue;
+    ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
+    ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
+  }
+  ctx.stroke();
+
+  // water-water
   ctx.beginPath();
   ctx.strokeStyle = C.waterEdge;
   for (const e of terrain.edges) {
@@ -105,40 +128,6 @@ function render() {
       ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
     }
     ctx.stroke();
-  }
-
-  // Rivers
-  if (terrain.rivers && terrain.rivers.length > 0) {
-    ctx.strokeStyle = C.river;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    for (const river of terrain.rivers) {
-      if (!river.path || river.path.length === 0) continue;
-      const rw = { wide: 4, medium: 2.5, narrow: 1.5 }[river.width] || 2.5;
-      ctx.lineWidth = Math.max(0.8 / view.scale, rw * 0.45);
-      ctx.beginPath();
-      let lastPt = null;
-      for (const eid of river.path) {
-        const e = edgeById.get(eid);
-        if (!e) continue;
-        const [a, b] = e.vertices;
-        if (!lastPt) {
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          lastPt = b;
-        } else {
-          const da = Math.hypot(a.x - lastPt.x, a.y - lastPt.y);
-          if (da < 1.0) {
-            ctx.lineTo(b.x, b.y);
-            lastPt = b;
-          } else {
-            ctx.lineTo(a.x, a.y);
-            lastPt = a;
-          }
-        }
-      }
-      ctx.stroke();
-    }
   }
 
   ctx.restore();
@@ -265,6 +254,7 @@ async function generate() {
 function loadTerrain(t) {
   terrain   = t;
   edgeById  = new Map((t.edges || []).map(e => [e.id, e]));
+  cellById  = new Map((t.cells || []).map(c => [c.id, c]));
   showEmpty(false);
   fitView();
   render();
