@@ -47,6 +47,29 @@ const C = {
   coast:      '#3a9ab8',
 };
 
+// Interpolate land color from lowland (dark green) through hills (olive)
+// to peaks (warm gray/brown) for a readable topographic feel.
+function landColor(elev) {
+  const stops = [
+    { t: 0.00, r: 22, g: 48, b: 22 },  // lowland dark green
+    { t: 0.45, r: 58, g: 72, b: 38 },  // hills olive
+    { t: 0.80, r: 96, g: 92, b: 62 },  // high ground khaki
+    { t: 1.00, r: 150, g: 138, b: 110 }, // peaks warm gray
+  ];
+  const t = Math.max(0, Math.min(1, elev));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i], b = stops[i + 1];
+    if (t >= a.t && t <= b.t) {
+      const k = (t - a.t) / (b.t - a.t);
+      const r = Math.round(a.r + (b.r - a.r) * k);
+      const g = Math.round(a.g + (b.g - a.g) * k);
+      const bl = Math.round(a.b + (b.b - a.b) * k);
+      return `rgb(${r},${g},${bl})`;
+    }
+  }
+  return C.land;
+}
+
 // ── Organic smoothing ─────────────────────────────────────────────────────────
 // Each Voronoi edge gets subdivided with perpendicular noise offsets. Noise
 // depends only on canonical-sorted edge endpoints, so adjacent cells agree on
@@ -83,10 +106,14 @@ function subdividedEdge(a, b) {
     const mx = v1.x + dx * t;
     const my = v1.y + dy * t;
     const n = noise2D(mx, my);
-    pts.push({
-      x: mx + px * n * render_.amount * len,
-      y: my + py * n * render_.amount * len,
-    });
+    let nx = mx + px * n * render_.amount * len;
+    let ny = my + py * n * render_.amount * len;
+    // Clamp to map bounds so wiggle can never leak across the border.
+    if (terrain) {
+      if (nx < 0) nx = 0; else if (nx > bw) nx = bw;
+      if (ny < 0) ny = 0; else if (ny > bh) ny = bh;
+    }
+    pts.push({ x: nx, y: ny });
   }
   pts.push(v2);
   if (reversed) pts.reverse();
@@ -170,7 +197,7 @@ function render() {
     if (cell.river) {
       ctx.fillStyle = C.riverCell;
     } else if (cell.terrain === 'land') {
-      ctx.fillStyle = C.land;
+      ctx.fillStyle = landColor(cell.elevation || 0);
     } else {
       ctx.fillStyle = lakeCellSet.has(cell.id) ? C.lake : C.water;
     }
