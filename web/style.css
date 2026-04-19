@@ -242,6 +242,32 @@ button.secondary:hover { background: var(--dim); color: var(--bg); }
   flex: 1;
   min-width: 0;
 }
+.river-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 4px 4px;
+  border: 1px solid var(--input-border);
+  background: rgba(255,255,255,0.01);
+}
+.river-row-top {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.river-row-bottom {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.river-row-bottom label {
+  color: var(--dim);
+  width: 46px;
+  min-width: 46px;
+}
+.river-row-bottom input[type="range"] {
+  flex: 1;
+}
 .btn-remove {
   width: 20px;
   height: 22px;

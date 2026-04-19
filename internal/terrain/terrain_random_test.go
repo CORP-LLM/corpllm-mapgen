@@ -321,6 +321,58 @@ func TestRiverEndInland(t *testing.T) {
 	}
 }
 
+// TestRiverStraightness verifies that high-straightness rivers use on average
+// fewer cells than fully natural ones (a straighter path covers less ground).
+// Aggregated over multiple seeds to smooth out topology variance.
+func TestRiverStraightness(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var totalNatural, totalStraight int
+	var samples int
+	for i := 0; i < 12; i++ {
+		seed := rng.Int63()
+		cfgA := randomConfig(seed)
+		cfgA.Terrain.LakesEnabled = false
+		cfgA.Terrain.Rivers = []RiverSpec{
+			{Width: "medium", Origin: "border", End: "coast", Straightness: 0.0},
+		}
+		tmA, _ := Generate(cfgA)
+
+		cfgB := randomConfig(seed)
+		cfgB.Terrain.LakesEnabled = false
+		cfgB.Terrain.Rivers = []RiverSpec{
+			{Width: "medium", Origin: "border", End: "coast", Straightness: 1.0},
+		}
+		tmB, _ := Generate(cfgB)
+
+		if len(tmA.Rivers) == 0 || len(tmB.Rivers) == 0 {
+			continue
+		}
+		cellsA, cellsB := 0, 0
+		for _, c := range tmA.Cells {
+			if c.River {
+				cellsA++
+			}
+		}
+		for _, c := range tmB.Cells {
+			if c.River {
+				cellsB++
+			}
+		}
+		totalNatural += cellsA
+		totalStraight += cellsB
+		samples++
+	}
+	if samples == 0 {
+		t.Skip("no rivers generated")
+	}
+	// Average: straight should be ≤ natural. Allow small slack (≤ 15%) for topology variance.
+	avgN := float64(totalNatural) / float64(samples)
+	avgS := float64(totalStraight) / float64(samples)
+	if avgS > avgN*1.15 {
+		t.Errorf("straight avg cells %.1f > natural avg cells %.1f + 15%%", avgS, avgN)
+	}
+}
+
 // TestLakeSizesHonored verifies per-lake size configurations result in
 // clusters of the expected approximate size.
 func TestLakeSizesHonored(t *testing.T) {

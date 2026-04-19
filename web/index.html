@@ -19,21 +19,21 @@
       <div class="section">
         <div class="section-title">Base</div>
         <div class="seed-row">
-          <input type="number" id="cfg-seed" value="42" placeholder="seed">
-          <button id="btn-random" class="secondary">RND</button>
+          <input type="number" id="cfg-seed" value="42" placeholder="seed" title="Random seed — same seed + same config produces the same map">
+          <button id="btn-random" class="secondary" title="Pick a random seed">RND</button>
         </div>
         <div class="dim-row">
-          <label>W</label>
-          <input type="number" id="cfg-width" value="1000" min="100" max="10000">
-          <label>H</label>
-          <input type="number" id="cfg-height" value="800" min="100" max="10000">
+          <label title="Map width in world units">W</label>
+          <input type="number" id="cfg-width" value="1000" min="100" max="10000" title="Map width (100–10000)">
+          <label title="Map height in world units">H</label>
+          <input type="number" id="cfg-height" value="800" min="100" max="10000" title="Map height (100–10000)">
         </div>
-        <div class="field">
+        <div class="field" title="Number of Voronoi cells — higher = finer terrain detail, slower generation">
           <label>Cells</label>
           <input type="range" id="cfg-cells" min="500" max="5000" step="50" value="1000">
           <span class="range-val" id="cfg-cells-val">1000</span>
         </div>
-        <div class="field">
+        <div class="field" title="Lloyd relaxation iterations — higher = more uniform cell sizes (less clustering)">
           <label>Relax</label>
           <input type="range" id="cfg-relax" min="0" max="10" value="3">
           <span class="range-val" id="cfg-relax-val">3</span>
@@ -43,12 +43,12 @@
       <!-- Coast -->
       <div class="section">
         <div class="section-title">
-          <label class="toggle-label">
+          <label class="toggle-label" title="Enable coast/ocean generation">
             <input type="checkbox" id="cfg-coast-en" checked> Coast
           </label>
         </div>
         <div id="coast-opts">
-          <div class="field">
+          <div class="field" title="Which map edge has the ocean">
             <label>Side</label>
             <select id="cfg-coast-side">
               <option value="north">North</option>
@@ -57,12 +57,12 @@
               <option value="west">West</option>
             </select>
           </div>
-          <div class="field">
+          <div class="field" title="Coastline irregularity — 0 = straight line, 1 = maximally chaotic">
             <label>Noise</label>
             <input type="range" id="cfg-coast-noise" min="0" max="100" value="50">
             <span class="range-val" id="cfg-coast-noise-val">0.50</span>
           </div>
-          <div class="field">
+          <div class="field" title="Target fraction of cells that become coast water">
             <label>Water%</label>
             <input type="range" id="cfg-water-ratio" min="5" max="80" value="25">
             <span class="range-val" id="cfg-water-ratio-val">25%</span>
@@ -70,29 +70,54 @@
         </div>
       </div>
 
+      <!-- Render options -->
+      <div class="section">
+        <div class="section-title">Render</div>
+        <div class="field" title="Draw thin outlines between cells (land/water/river borders)">
+          <label class="toggle-label" style="width:auto;flex:1">
+            <input type="checkbox" id="cfg-show-edges" checked> Show edges
+          </label>
+        </div>
+        <div class="field" title="Use bezier curves through midpoints for cell fills (smoother but may show small gaps at Voronoi vertices)">
+          <label class="toggle-label" style="width:auto;flex:1">
+            <input type="checkbox" id="cfg-smooth-curves"> Smooth curves
+          </label>
+        </div>
+        <div class="field" title="Subdivisions per edge — higher = smoother organic look (recompute on change)">
+          <label>Subdiv</label>
+          <input type="range" id="cfg-subdiv" min="1" max="10" value="6">
+          <span class="range-val" id="cfg-subdiv-val">6</span>
+        </div>
+        <div class="field" title="Edge noise amplitude as % of edge length — 0 = perfectly straight Voronoi">
+          <label>Wiggle</label>
+          <input type="range" id="cfg-wiggle" min="0" max="30" value="12">
+          <span class="range-val" id="cfg-wiggle-val">12</span>
+        </div>
+      </div>
+
       <!-- Rivers -->
       <div class="section">
         <div class="section-title">
-          <label class="toggle-label">
+          <label class="toggle-label" title="Enable river generation">
             <input type="checkbox" id="cfg-rivers-en" checked> Rivers
           </label>
         </div>
         <div id="rivers-opts">
           <div id="rivers-list"></div>
-          <button id="btn-add-river" class="secondary add-btn">+ ADD RIVER</button>
+          <button id="btn-add-river" class="secondary add-btn" title="Add another river to the list">+ ADD RIVER</button>
         </div>
       </div>
 
       <!-- Lakes -->
       <div class="section">
         <div class="section-title">
-          <label class="toggle-label">
+          <label class="toggle-label" title="Enable lake generation (isolated water clusters inland)">
             <input type="checkbox" id="cfg-lakes-en" checked> Lakes
           </label>
         </div>
         <div id="lakes-opts">
           <div id="lakes-list"></div>
-          <button id="btn-add-lake" class="secondary add-btn">+ ADD LAKE</button>
+          <button id="btn-add-lake" class="secondary add-btn" title="Add another lake to the list">+ ADD LAKE</button>
         </div>
       </div>
 
@@ -133,30 +158,37 @@
 
 <!-- Templates (not rendered) -->
 <template id="river-row-template">
-  <div class="dyn-row">
-    <select class="river-width">
-      <option value="narrow">Narrow</option>
-      <option value="medium" selected>Medium</option>
-      <option value="wide">Wide</option>
-    </select>
-    <select class="river-route">
-      <option value="border-coast" selected>Border&rarr;Coast</option>
-      <option value="inland-coast">Inland&rarr;Coast</option>
-      <option value="border-inland">Border&rarr;Inland</option>
-      <option value="inland-inland">Inland&rarr;Inland</option>
-    </select>
-    <button class="btn-remove" title="Remove">&times;</button>
+  <div class="dyn-row river-row">
+    <div class="river-row-top">
+      <select class="river-width" title="River width: narrow (1-cell) / medium / wide">
+        <option value="narrow">Narrow</option>
+        <option value="medium" selected>Medium</option>
+        <option value="wide">Wide</option>
+      </select>
+      <select class="river-route" title="Where the river starts and ends: Border = map edge, Inland = interior, Coast = coast water">
+        <option value="border-coast" selected>Border&rarr;Coast</option>
+        <option value="inland-coast">Inland&rarr;Coast</option>
+        <option value="border-inland">Border&rarr;Inland</option>
+        <option value="inland-inland">Inland&rarr;Inland</option>
+      </select>
+      <button class="btn-remove" title="Remove this river">&times;</button>
+    </div>
+    <div class="river-row-bottom" title="Straightness: 0 = natural winding river, 100 = cyberpunk canal (nearly straight)">
+      <label>Straight</label>
+      <input type="range" class="river-straight" min="0" max="100" value="0">
+      <span class="range-val river-straight-val">0%</span>
+    </div>
   </div>
 </template>
 
 <template id="lake-row-template">
   <div class="dyn-row">
-    <select class="lake-size">
+    <select class="lake-size" title="Lake size: small (~3 cells) / medium (~7) / large (~15)">
       <option value="small">Small</option>
       <option value="medium" selected>Medium</option>
       <option value="large">Large</option>
     </select>
-    <button class="btn-remove" title="Remove">&times;</button>
+    <button class="btn-remove" title="Remove this lake">&times;</button>
   </div>
 </template>
 

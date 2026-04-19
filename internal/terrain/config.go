@@ -2,11 +2,13 @@ package terrain
 
 import "errors"
 
-// RiverSpec defines one river: its visual width and routing endpoints.
+// RiverSpec defines one river: its visual width, routing endpoints, and
+// straightness (0 = natural winding, 1 = canal-straight for cyberpunk vibes).
 type RiverSpec struct {
-	Width  string `json:"width"`  // "narrow", "medium", "wide"
-	Origin string `json:"origin"` // "border" or "inland"
-	End    string `json:"end"`    // "coast" or "inland"
+	Width        string  `json:"width"`        // "narrow", "medium", "wide"
+	Origin       string  `json:"origin"`       // "border" or "inland"
+	End          string  `json:"end"`          // "coast" or "inland"
+	Straightness float64 `json:"straightness"` // 0.0–1.0
 }
 
 // LakeSpec defines one lake's size.
@@ -109,6 +111,9 @@ func (c *Config) Validate() error {
 		}
 		if r.End != "" && !validEnds[r.End] {
 			return errors.New("river end must be coast/inland")
+		}
+		if r.Straightness < 0 || r.Straightness > 1 {
+			return errors.New("river straightness must be 0.0–1.0")
 		}
 		_ = i
 	}

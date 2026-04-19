@@ -64,7 +64,30 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 			continue
 		}
 
-		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec.End, targetInlandLen)
+		// Target direction: used by straightness to prefer forward-aligned moves.
+		var tx, ty float64
+		if spec.End == "coast" {
+			switch cfg.Terrain.CoastSide {
+			case "north":
+				ty = -1
+			case "south":
+				ty = 1
+			case "east":
+				tx = 1
+			case "west":
+				tx = -1
+			}
+		} else {
+			// Inland: aim toward map center.
+			src := cells[srcID].Center
+			dx, dy := w/2-src.X, h/2-src.Y
+			l := math.Hypot(dx, dy)
+			if l > 0 {
+				tx, ty = dx/l, dy/l
+			}
+		}
+
+		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec.End, targetInlandLen, spec.Straightness, tx, ty)
 		if len(path) < 2 {
 			continue
 		}
@@ -107,14 +130,22 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 }
 
 // routeRiver greedy-routes from srcID. Termination depends on end:
-//   - "coast":   stop when water is reached (original behavior)
-//   - "inland":  stop after reaching ~targetLen Euclidean distance from source
-func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used map[int]bool, end string, targetLen float64) []int {
+//   - "coast":   stop when water is reached
+//   - "inland":  stop after ~targetLen Euclidean distance from source
+//
+// straightness (0–1) biases each step toward the (tx,ty) direction. Straightness=1
+// produces a nearly straight channel — cyberpunk canals rather than natural rivers.
+func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
+	used map[int]bool, end string, targetLen float64,
+	straightness, tx, ty float64) []int {
 	const maxSteps = 200
 	path := []int{srcID}
 	visited := map[int]bool{srcID: true}
 	cur := srcID
 	src := cells[srcID].Center
+
+	maxDim := math.Max(w, h)
+	alignWeight := straightness * maxDim * 1.5
 
 	for step := 0; step < maxSteps; step++ {
 		c := cells[cur]
@@ -128,13 +159,13 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used m
 				break
 			}
 			if c.Terrain == "water" {
-				// Reached water unexpectedly — still stop (avoids growing through water).
 				break
 			}
 		}
 
 		best := -1
 		bestScore := math.MaxFloat64
+		curCenter := c.Center
 		for _, nb := range neighbors[cur] {
 			if visited[nb] {
 				continue
@@ -143,11 +174,10 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used m
 			var score float64
 			switch end {
 			case "inland":
-				// Prefer cells farther from the source, away from map edges.
 				d := math.Hypot(nc.Center.X-src.X, nc.Center.Y-src.Y)
 				score = -d + (1 / (distToEdge(nc.Center, w, h) + 1))
 				if nc.Terrain == "water" {
-					score += 1e6 // avoid ending in water
+					score += 1e6
 				}
 			default: // "coast"
 				score = distToEdge(nc.Center, w, h)
@@ -157,6 +187,16 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64, used m
 			}
 			if used[nb] {
 				score += 500
+			}
+			// Straightness bias: reward neighbors aligned with target direction.
+			if alignWeight > 0 {
+				mx := nc.Center.X - curCenter.X
+				my := nc.Center.Y - curCenter.Y
+				ml := math.Hypot(mx, my)
+				if ml > 0 {
+					align := (mx*tx + my*ty) / ml
+					score -= align * alignWeight
+				}
 			}
 			if score < bestScore {
 				bestScore = score

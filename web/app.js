@@ -7,9 +7,13 @@ let cellById        = new Map();
 let smoothedCells   = new Map(); // cellID -> [pt, pt, ...] smoothed polygon
 let smoothedEdges   = new Map(); // edgeID -> [pt, pt, ...] smoothed polyline
 
-// Smoothing parameters
-const SMOOTH_SUBDIV = 6;    // points inserted per original edge
-const SMOOTH_AMOUNT = 0.12; // perpendicular offset as fraction of edge length
+// Render settings (mutable — bound to UI controls).
+const render_ = {
+  subdiv:       6,     // points inserted per original edge
+  amount:       0.12,  // perpendicular offset as fraction of edge length
+  showEdges:    true,
+  smoothCurves: false,
+};
 const view = { x: 0, y: 0, scale: 1 };
 let dragging = false;
 let dragStart = { x: 0, y: 0 };
@@ -61,17 +65,17 @@ function subdividedEdge(a, b) {
   const v2 = reversed ? a : b;
   const dx = v2.x - v1.x, dy = v2.y - v1.y;
   const len = Math.hypot(dx, dy);
-  if (len < 0.5) return [a, b];
+  if (len < 0.5 || render_.subdiv < 2) return reversed ? [b, a] : [a, b];
   const px = -dy / len, py = dx / len;
   const pts = [v1];
-  for (let k = 1; k < SMOOTH_SUBDIV; k++) {
-    const t = k / SMOOTH_SUBDIV;
+  for (let k = 1; k < render_.subdiv; k++) {
+    const t = k / render_.subdiv;
     const mx = v1.x + dx * t;
     const my = v1.y + dy * t;
     const n = noise2D(mx, my);
     pts.push({
-      x: mx + px * n * SMOOTH_AMOUNT * len,
-      y: my + py * n * SMOOTH_AMOUNT * len,
+      x: mx + px * n * render_.amount * len,
+      y: my + py * n * render_.amount * len,
     });
   }
   pts.push(v2);
@@ -142,13 +146,17 @@ function render() {
 
   const lakeCellSet = buildLakeSet();
 
-  // Fill cells — smoothed polygon (linear through subdivided points).
+  // Fill cells — smoothed polygon (linear OR bezier through midpoints).
   for (const cell of terrain.cells) {
     const poly = smoothedCells.get(cell.id);
     if (!poly || poly.length < 3) continue;
     ctx.beginPath();
-    pathPolyline(poly);
-    ctx.closePath();
+    if (render_.smoothCurves) {
+      pathSmoothClosed(poly);
+    } else {
+      pathPolyline(poly);
+      ctx.closePath();
+    }
     if (cell.river) {
       ctx.fillStyle = C.riverCell;
     } else if (cell.terrain === 'land') {
@@ -159,42 +167,44 @@ function render() {
     ctx.fill();
   }
 
-  // Cell edges — batched by type, smoothed.
-  ctx.lineWidth = 0.7 / view.scale;
+  // Cell edges — batched by type, smoothed. Skip entirely if disabled.
+  if (render_.showEdges) {
+    ctx.lineWidth = 0.7 / view.scale;
 
-  // land-land (non-river)
-  ctx.beginPath();
-  ctx.strokeStyle = C.landEdge;
-  for (const e of terrain.edges) {
-    if (e.coastline || e.type !== 'land-land') continue;
-    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
-    if (ca && ca.river || cb && cb.river) continue;
-    pathPolyline(smoothedEdges.get(e.id));
-  }
-  ctx.stroke();
+    // land-land (non-river)
+    ctx.beginPath();
+    ctx.strokeStyle = C.landEdge;
+    for (const e of terrain.edges) {
+      if (e.coastline || e.type !== 'land-land') continue;
+      const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+      if (ca && ca.river || cb && cb.river) continue;
+      pathPolyline(smoothedEdges.get(e.id));
+    }
+    ctx.stroke();
 
-  // river cell borders
-  ctx.beginPath();
-  ctx.strokeStyle = C.riverEdge;
-  for (const e of terrain.edges) {
-    if (e.coastline) continue;
-    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
-    if (!ca || !cb) continue;
-    if (!ca.river && !cb.river) continue;
-    pathPolyline(smoothedEdges.get(e.id));
-  }
-  ctx.stroke();
+    // river cell borders
+    ctx.beginPath();
+    ctx.strokeStyle = C.riverEdge;
+    for (const e of terrain.edges) {
+      if (e.coastline) continue;
+      const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+      if (!ca || !cb) continue;
+      if (!ca.river && !cb.river) continue;
+      pathPolyline(smoothedEdges.get(e.id));
+    }
+    ctx.stroke();
 
-  // water-water (skip river cell edges — handled by river batch)
-  ctx.beginPath();
-  ctx.strokeStyle = C.waterEdge;
-  for (const e of terrain.edges) {
-    if (e.coastline || e.type !== 'water-water') continue;
-    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
-    if (ca && ca.river || cb && cb.river) continue;
-    pathPolyline(smoothedEdges.get(e.id));
+    // water-water (skip river cell edges — handled by river batch)
+    ctx.beginPath();
+    ctx.strokeStyle = C.waterEdge;
+    for (const e of terrain.edges) {
+      if (e.coastline || e.type !== 'water-water') continue;
+      const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+      if (ca && ca.river || cb && cb.river) continue;
+      pathPolyline(smoothedEdges.get(e.id));
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
 
   // Coastlines
   if (terrain.coastline && terrain.coastline.edges.length > 0) {
@@ -371,9 +381,10 @@ function readRiverList() {
   return Array.from(rows).map(row => {
     const route = row.querySelector('.river-route').value.split('-');
     return {
-      width:  row.querySelector('.river-width').value,
-      origin: route[0],
-      end:    route[1],
+      width:        row.querySelector('.river-width').value,
+      origin:       route[0],
+      end:          route[1],
+      straightness: parseInt(row.querySelector('.river-straight').value, 10) / 100,
     };
   });
 }
@@ -385,11 +396,16 @@ function readLakeList() {
   }));
 }
 
-function addRiverRow(width = 'medium', origin = 'border', end = 'coast') {
+function addRiverRow(width = 'medium', origin = 'border', end = 'coast', straight = 0) {
   const tpl = el('river-row-template');
   const row = tpl.content.firstElementChild.cloneNode(true);
   row.querySelector('.river-width').value = width;
   row.querySelector('.river-route').value = `${origin}-${end}`;
+  const sl = row.querySelector('.river-straight');
+  const sv = row.querySelector('.river-straight-val');
+  sl.value = straight;
+  sv.textContent = straight + '%';
+  sl.addEventListener('input', () => { sv.textContent = sl.value + '%'; });
   row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
   el('rivers-list').appendChild(row);
 }
@@ -471,6 +487,27 @@ function init() {
   bindRange('cfg-relax',       'cfg-relax-val');
   bindRange('cfg-coast-noise', 'cfg-coast-noise-val', v => (v / 100).toFixed(2));
   bindRange('cfg-water-ratio', 'cfg-water-ratio-val', v => v + '%');
+  bindRange('cfg-subdiv',      'cfg-subdiv-val');
+  bindRange('cfg-wiggle',      'cfg-wiggle-val');
+
+  // Render-option live bindings (re-render without regeneration).
+  const reproc = () => { if (terrain) { preprocessSmooth(); render(); } };
+  el('cfg-subdiv').addEventListener('input', () => {
+    render_.subdiv = parseInt(el('cfg-subdiv').value, 10);
+    reproc();
+  });
+  el('cfg-wiggle').addEventListener('input', () => {
+    render_.amount = parseInt(el('cfg-wiggle').value, 10) / 100;
+    reproc();
+  });
+  el('cfg-show-edges').addEventListener('change', () => {
+    render_.showEdges = el('cfg-show-edges').checked;
+    if (terrain) render();
+  });
+  el('cfg-smooth-curves').addEventListener('change', () => {
+    render_.smoothCurves = el('cfg-smooth-curves').checked;
+    if (terrain) render();
+  });
 
   bindToggle('cfg-coast-en',  'coast-opts');
   bindToggle('cfg-rivers-en', 'rivers-opts');
