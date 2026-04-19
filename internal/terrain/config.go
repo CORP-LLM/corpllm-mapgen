@@ -2,13 +2,15 @@ package terrain
 
 import "errors"
 
-// RiverSpec defines one river: its visual width, routing endpoints, and
-// straightness (0 = natural winding, 1 = canal-straight for cyberpunk vibes).
+// RiverSpec defines one river.
+// Rivers must terminate hydrologically: into coast, into a lake, or off
+// the map edge — they don't just stop in the middle of land.
 type RiverSpec struct {
 	Width        string  `json:"width"`        // "narrow", "medium", "wide"
 	Origin       string  `json:"origin"`       // "border" or "inland"
-	End          string  `json:"end"`          // "coast" or "inland"
-	Straightness float64 `json:"straightness"` // 0.0–1.0
+	End          string  `json:"end"`          // "coast", "lake", or "offmap"
+	Straightness float64 `json:"straightness"` // 0.0–1.0 — directional bias
+	Meander      float64 `json:"meander"`      // 0.0–1.0 — random path perturbation
 }
 
 // LakeSpec defines one lake's size.
@@ -101,8 +103,8 @@ func (c *Config) Validate() error {
 	}
 	validWidths := map[string]bool{"narrow": true, "medium": true, "wide": true}
 	validOrigins := map[string]bool{"border": true, "inland": true}
-	validEnds := map[string]bool{"coast": true, "inland": true}
-	for i, r := range t.Rivers {
+	validEnds := map[string]bool{"coast": true, "lake": true, "offmap": true}
+	for _, r := range t.Rivers {
 		if r.Width != "" && !validWidths[r.Width] {
 			return errors.New("river width must be narrow/medium/wide")
 		}
@@ -110,12 +112,14 @@ func (c *Config) Validate() error {
 			return errors.New("river origin must be border/inland")
 		}
 		if r.End != "" && !validEnds[r.End] {
-			return errors.New("river end must be coast/inland")
+			return errors.New("river end must be coast/lake/offmap")
 		}
 		if r.Straightness < 0 || r.Straightness > 1 {
 			return errors.New("river straightness must be 0.0–1.0")
 		}
-		_ = i
+		if r.Meander < 0 || r.Meander > 1 {
+			return errors.New("river meander must be 0.0–1.0")
+		}
 	}
 	if len(t.Lakes) > 20 {
 		return errors.New("at most 20 lakes allowed")

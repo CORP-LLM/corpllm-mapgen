@@ -47,16 +47,16 @@ func Generate(cfg *Config) (*Terrain, error) {
 	// 6. Build edges.
 	edges := buildEdges(diag, cells)
 
-	// 7. Rivers.
-	var rivers []River
-	if cfg.Terrain.RiversEnabled && len(cfg.Terrain.Rivers) > 0 {
-		rivers = generateRivers(cells, edges, diag, cfg, rng)
-	}
-
-	// 8. Lakes.
+	// 7. Lakes first — rivers may target them when end="lake".
 	var lakes []Lake
 	if cfg.Terrain.LakesEnabled && len(cfg.Terrain.Lakes) > 0 {
 		lakes = generateLakes(cells, diag, cfg, rng)
+	}
+
+	// 8. Rivers.
+	var rivers []River
+	if cfg.Terrain.RiversEnabled && len(cfg.Terrain.Rivers) > 0 {
+		rivers = generateRivers(cells, edges, diag, cfg, rng)
 	}
 
 	// Rebuild edges after all water assignment (rivers + lakes changed cell terrain).

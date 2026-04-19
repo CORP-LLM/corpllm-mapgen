@@ -184,16 +184,22 @@ func TestLakesIsolatedFromOtherWater(t *testing.T) {
 			neighbors[e.Cells[0]] = append(neighbors[e.Cells[0]], e.Cells[1])
 			neighbors[e.Cells[1]] = append(neighbors[e.Cells[1]], e.Cells[0])
 		}
-		// Every lake cell's water neighbors must be in the same lake.
+		// Lake cells may border river cells (rivers flow into lakes) but
+		// must not border coast water or a DIFFERENT lake.
 		for _, lk := range tm.Lakes {
 			for _, cid := range lk.Cells {
 				for _, nb := range neighbors[cid] {
-					if tm.Cells[nb].Terrain != "water" {
+					nc := tm.Cells[nb]
+					if nc.Terrain != "water" || nc.River {
 						continue
 					}
 					if cellToLake[nb] != lk.ID {
-						t.Errorf("seed %d: lake %d cell %d has non-cluster water neighbor %d (lake=%d, river=%t)",
-							cfg.Seed, lk.ID, cid, nb, cellToLake[nb], tm.Cells[nb].River)
+						kind := "coast"
+						if nc.Lake {
+							kind = "other lake"
+						}
+						t.Errorf("seed %d: lake %d cell %d has %s water neighbor %d",
+							cfg.Seed, lk.ID, cid, kind, nb)
 					}
 				}
 			}
@@ -291,14 +297,16 @@ func TestRiverOriginInland(t *testing.T) {
 	}
 }
 
-// TestRiverEndInland verifies rivers with End="inland" terminate on land.
-func TestRiverEndInland(t *testing.T) {
+// TestRiverEndOffmap verifies that most End="offmap" rivers actually reach
+// the map border (rather than ending at coast water they crossed).
+func TestRiverEndOffmap(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < 10; i++ {
+	var hits, tries int
+	for i := 0; i < 20; i++ {
 		cfg := randomConfig(rng.Int63())
 		cfg.Terrain.LakesEnabled = false
 		cfg.Terrain.Rivers = []RiverSpec{
-			{Width: "narrow", Origin: "border", End: "inland"},
+			{Width: "narrow", Origin: "inland", End: "offmap"},
 		}
 		tm, err := Generate(cfg)
 		if err != nil {
@@ -307,17 +315,68 @@ func TestRiverEndInland(t *testing.T) {
 		if len(tm.Rivers) == 0 {
 			continue
 		}
-		// Mouth cell should not be coast water — it should be a river cell
-		// (land turned water) whose neighbors include normal land (not coast).
+		tries++
 		mouth := tm.Rivers[0].Mouth
-		w, h := float64(cfg.Width), float64(cfg.Height)
-		// Must not be at the map border.
-		margin := 5.0
-		atBorder := mouth.X <= margin || mouth.X >= w-margin || mouth.Y <= margin || mouth.Y >= h-margin
-		if atBorder {
-			t.Errorf("seed %d: inland-ending river mouth (%.1f,%.1f) at map border",
-				cfg.Seed, mouth.X, mouth.Y)
+		for j := range tm.Cells {
+			if tm.Cells[j].Center != mouth {
+				continue
+			}
+			w, h := float64(cfg.Width), float64(cfg.Height)
+			const margin = 2.0
+			for _, v := range tm.Cells[j].Vertices {
+				if v.X <= margin || v.X >= w-margin || v.Y <= margin || v.Y >= h-margin {
+					hits++
+					break
+				}
+			}
+			break
 		}
+	}
+	if tries == 0 {
+		t.Skip("no rivers generated")
+	}
+	rate := float64(hits) / float64(tries)
+	if rate < 0.5 {
+		t.Errorf("offmap hit rate only %.0f%% (%d/%d)", rate*100, hits, tries)
+	}
+}
+
+// TestRiverEndLake verifies that most rivers with End="lake" reach a lake.
+// Greedy routing can get blocked by topology; we assert an aggregate success
+// rate rather than per-seed termination.
+func TestRiverEndLake(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var hits, tries int
+	for i := 0; i < 20; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.CellCount = 250
+		cfg.Terrain.Lakes = []LakeSpec{{Size: "large"}, {Size: "large"}, {Size: "large"}}
+		cfg.Terrain.Rivers = []RiverSpec{
+			{Width: "medium", Origin: "inland", End: "lake"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Rivers) == 0 || len(tm.Lakes) == 0 {
+			continue
+		}
+		tries++
+		mouth := tm.Rivers[0].Mouth
+		for j := range tm.Cells {
+			if tm.Cells[j].Center == mouth && tm.Cells[j].Lake {
+				hits++
+				break
+			}
+		}
+	}
+	if tries == 0 {
+		t.Skip("no rivers generated")
+	}
+	rate := float64(hits) / float64(tries)
+	if rate < 0.5 {
+		t.Errorf("end=lake hit rate only %.0f%% (%d/%d) — routing not preferring lakes",
+			rate*100, hits, tries)
 	}
 }
 

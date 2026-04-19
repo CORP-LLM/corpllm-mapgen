@@ -385,9 +385,18 @@ function readRiverList() {
       origin:       route[0],
       end:          route[1],
       straightness: parseInt(row.querySelector('.river-straight').value, 10) / 100,
+      meander:      parseInt(row.querySelector('.river-meander').value, 10) / 100,
     };
   });
 }
+
+// River style presets — set straightness/meander combos for common looks.
+const RIVER_PRESETS = {
+  natural:     { straight: 0,   meander: 25 },
+  channelized: { straight: 70,  meander: 0  },
+  concrete:    { straight: 100, meander: 0  },
+  ravine:      { straight: 10,  meander: 60 },
+};
 
 function readLakeList() {
   const rows = el('lakes-list').querySelectorAll('.dyn-row');
@@ -396,18 +405,42 @@ function readLakeList() {
   }));
 }
 
-function addRiverRow(width = 'medium', origin = 'border', end = 'coast', straight = 0) {
+function addRiverRow(width = 'medium', origin = 'border', end = 'coast',
+                     straight = 0, meander = 0, preset = 'custom') {
   const tpl = el('river-row-template');
   const row = tpl.content.firstElementChild.cloneNode(true);
   row.querySelector('.river-width').value = width;
   row.querySelector('.river-route').value = `${origin}-${end}`;
+
   const sl = row.querySelector('.river-straight');
   const sv = row.querySelector('.river-straight-val');
-  sl.value = straight;
-  sv.textContent = straight + '%';
-  sl.addEventListener('input', () => { sv.textContent = sl.value + '%'; });
+  const ml = row.querySelector('.river-meander');
+  const mv = row.querySelector('.river-meander-val');
+  const ps = row.querySelector('.river-preset');
+
+  const setVals = (s, m) => {
+    sl.value = s; sv.textContent = s + '%';
+    ml.value = m; mv.textContent = m + '%';
+  };
+  setVals(straight, meander);
+
+  sl.addEventListener('input', () => { sv.textContent = sl.value + '%'; ps.value = 'custom'; });
+  ml.addEventListener('input', () => { mv.textContent = ml.value + '%'; ps.value = 'custom'; });
+
+  ps.value = preset;
+  ps.addEventListener('change', () => {
+    const p = RIVER_PRESETS[ps.value];
+    if (p) setVals(p.straight, p.meander);
+  });
+
   row.querySelector('.btn-remove').addEventListener('click', () => row.remove());
   el('rivers-list').appendChild(row);
+
+  // Apply initial preset values if not custom.
+  if (preset !== 'custom' && RIVER_PRESETS[preset]) {
+    const p = RIVER_PRESETS[preset];
+    setVals(p.straight, p.meander);
+  }
 }
 
 function addLakeRow(size = 'medium') {

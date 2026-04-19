@@ -160,23 +160,40 @@
 <template id="river-row-template">
   <div class="dyn-row river-row">
     <div class="river-row-top">
-      <select class="river-width" title="River width: narrow (1-cell) / medium / wide">
+      <select class="river-width" title="River width: narrow / medium / wide">
         <option value="narrow">Narrow</option>
         <option value="medium" selected>Medium</option>
         <option value="wide">Wide</option>
       </select>
-      <select class="river-route" title="Where the river starts and ends: Border = map edge, Inland = interior, Coast = coast water">
+      <select class="river-route" title="Start &rarr; End. A river must end in the sea, a lake, or off the map — never dry land.">
         <option value="border-coast" selected>Border&rarr;Coast</option>
         <option value="inland-coast">Inland&rarr;Coast</option>
-        <option value="border-inland">Border&rarr;Inland</option>
-        <option value="inland-inland">Inland&rarr;Inland</option>
+        <option value="border-lake">Border&rarr;Lake</option>
+        <option value="inland-lake">Inland&rarr;Lake</option>
+        <option value="border-offmap">Border&rarr;Offmap</option>
+        <option value="inland-offmap">Inland&rarr;Offmap</option>
       </select>
       <button class="btn-remove" title="Remove this river">&times;</button>
     </div>
-    <div class="river-row-bottom" title="Straightness: 0 = natural winding river, 100 = cyberpunk canal (nearly straight)">
+    <div class="river-row-preset" title="Quick preset — sets straightness and meander for common river styles">
+      <label>Style</label>
+      <select class="river-preset">
+        <option value="custom">Custom</option>
+        <option value="natural" selected>Natural</option>
+        <option value="channelized">Channelized</option>
+        <option value="concrete">Concrete Canal</option>
+        <option value="ravine">Wild Ravine</option>
+      </select>
+    </div>
+    <div class="river-row-bottom" title="Straightness: 0 = natural, 100 = cyberpunk canal (nearly straight)">
       <label>Straight</label>
       <input type="range" class="river-straight" min="0" max="100" value="0">
       <span class="range-val river-straight-val">0%</span>
+    </div>
+    <div class="river-row-bottom" title="Meander: 0 = deterministic path, 100 = heavy random wandering">
+      <label>Meander</label>
+      <input type="range" class="river-meander" min="0" max="100" value="0">
+      <span class="range-val river-meander-val">0%</span>
     </div>
   </div>
 </template>

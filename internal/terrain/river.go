@@ -5,15 +5,27 @@ import (
 	"math/rand"
 )
 
-// generateRivers routes one river per RiverSpec. Each spec has its own
-// origin (border/inland), end (coast/inland), and width.
+// generateRivers routes one river per RiverSpec. End determines the hydrological
+// terminus: coast (ocean), lake, or offmap (map edge). Rivers never stop on land.
 func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Config, rng *rand.Rand) []River {
 	w := float64(cfg.Width)
 	h := float64(cfg.Height)
 	borderDist := math.Min(w, h) * 0.15
 	inlandDist := math.Min(w, h) * 0.3
 
-	// Edge lookup for assembling the river path.
+	// Classify existing water for end-routing disambiguation.
+	isCoastWater := func(c *Cell) bool { return c.Terrain == "water" && !c.Lake && !c.River }
+	isLakeWater := func(c *Cell) bool { return c.Terrain == "water" && c.Lake }
+
+	// Collect lake cell IDs once — used for end="lake" targeting.
+	var lakeCellIDs []int
+	for _, c := range cells {
+		if c.Lake {
+			lakeCellIDs = append(lakeCellIDs, c.ID)
+		}
+	}
+
+	// Edge lookup.
 	edgeIndex := make(map[[2]int]int, len(diag.edgePairs))
 	for i, p := range diag.edgePairs {
 		a, b := p[0], p[1]
@@ -23,76 +35,92 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		edgeIndex[[2]int{a, b}] = i
 	}
 
-	// Partition land cells by zone once; re-filter per spec to exclude used cells.
+	// Partition land cells by zone once.
 	var borderPool, inlandPool []int
 	for _, c := range cells {
 		if c.Terrain != "land" {
 			continue
 		}
 		cx, cy := c.Center.X, c.Center.Y
-		atBorder := cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist
-		atInland := cx >= inlandDist && cx <= w-inlandDist && cy >= inlandDist && cy <= h-inlandDist
-		if atBorder {
+		if cx < borderDist || cx > w-borderDist || cy < borderDist || cy > h-borderDist {
 			borderPool = append(borderPool, c.ID)
 		}
-		if atInland {
+		if cx >= inlandDist && cx <= w-inlandDist && cy >= inlandDist && cy <= h-inlandDist {
 			inlandPool = append(inlandPool, c.ID)
 		}
 	}
 
+	// coast-side unit vector (used by straightness bias for end=coast/offmap).
+	var coastX, coastY float64
+	switch cfg.Terrain.CoastSide {
+	case "north":
+		coastY = -1
+	case "south":
+		coastY = 1
+	case "east":
+		coastX = 1
+	case "west":
+		coastX = -1
+	}
+
 	var rivers []River
 	used := make(map[int]bool)
-	targetInlandLen := math.Hypot(w, h) * 0.25
 
 	for id, spec := range cfg.Terrain.Rivers {
+		// Skip silently if the spec asks for a lake but no lake exists.
+		if spec.End == "lake" && len(lakeCellIDs) == 0 {
+			continue
+		}
+
 		// Pool by origin.
 		pool := borderPool
 		if spec.Origin == "inland" {
 			pool = inlandPool
 		}
-		// Pick unused random candidate.
-		var srcID int = -1
-		for attempts := 0; attempts < 30 && srcID == -1 && len(pool) > 0; attempts++ {
-			idx := rng.Intn(len(pool))
-			cand := pool[idx]
-			if !used[cand] && cells[cand].Terrain == "land" {
-				srcID = cand
-			}
-			pool = append(pool[:idx], pool[idx+1:]...)
-		}
+		srcID := pickSource(pool, cells, used, rng)
 		if srcID == -1 {
 			continue
 		}
+		srcCenter := cells[srcID].Center
 
-		// Target direction: used by straightness to prefer forward-aligned moves.
+		// Target direction for straightness bias.
 		var tx, ty float64
-		if spec.End == "coast" {
-			switch cfg.Terrain.CoastSide {
-			case "north":
-				ty = -1
-			case "south":
-				ty = 1
-			case "east":
-				tx = 1
-			case "west":
-				tx = -1
+		switch spec.End {
+		case "coast":
+			tx, ty = coastX, coastY
+		case "offmap":
+			// Away from coast (or toward the farthest edge from source).
+			tx, ty = -coastX, -coastY
+			if tx == 0 && ty == 0 {
+				// No coast configured — aim for the nearest map edge.
+				tx, ty = toNearestEdge(srcCenter, w, h)
 			}
-		} else {
-			// Inland: aim toward map center.
-			src := cells[srcID].Center
-			dx, dy := w/2-src.X, h/2-src.Y
+		case "lake":
+			// Aim at the closest lake cell.
+			target := nearestCellCenter(srcCenter, lakeCellIDs, cells)
+			dx, dy := target.X-srcCenter.X, target.Y-srcCenter.Y
 			l := math.Hypot(dx, dy)
 			if l > 0 {
 				tx, ty = dx/l, dy/l
 			}
 		}
 
-		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec.End, targetInlandLen, spec.Straightness, tx, ty)
+		path := routeRiver(srcID, cells, diag.neighbors, w, h, used, spec, tx, ty,
+			isCoastWater, isLakeWater, lakeCellIDs, rng)
 		if len(path) < 2 {
 			continue
 		}
 
-		// Edge IDs.
+		// Require hydrologically valid termination: water of any kind,
+		// or for offmap, the map border.
+		lastCell := &cells[path[len(path)-1]]
+		validTerm := lastCell.Terrain == "water" ||
+			(spec.End == "offmap" && cellTouchesBorder(lastCell, w, h))
+		if !validTerm {
+			continue
+		}
+
+		// Assemble edge path.
 		edgePath := make([]int, 0, len(path)-1)
 		for k := 0; k < len(path)-1; k++ {
 			a, b := path[k], path[k+1]
@@ -109,6 +137,10 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		}
 
 		for _, cid := range path {
+			// Don't convert lake or coast cells we're flowing into.
+			if cells[cid].Terrain == "water" {
+				continue
+			}
 			cells[cid].River = true
 			cells[cid].Terrain = "water"
 			used[cid] = true
@@ -129,36 +161,104 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 	return rivers
 }
 
-// routeRiver greedy-routes from srcID. Termination depends on end:
-//   - "coast":   stop when water is reached
-//   - "inland":  stop after ~targetLen Euclidean distance from source
-//
-// straightness (0–1) biases each step toward the (tx,ty) direction. Straightness=1
-// produces a nearly straight channel — cyberpunk canals rather than natural rivers.
+func pickSource(pool []int, cells []Cell, used map[int]bool, rng *rand.Rand) int {
+	local := append([]int(nil), pool...)
+	for len(local) > 0 {
+		idx := rng.Intn(len(local))
+		cand := local[idx]
+		local = append(local[:idx], local[idx+1:]...)
+		if used[cand] || cells[cand].Terrain != "land" {
+			continue
+		}
+		return cand
+	}
+	return -1
+}
+
+func nearestCellCenter(from Point, ids []int, cells []Cell) Point {
+	best := cells[ids[0]].Center
+	bestD := math.Hypot(best.X-from.X, best.Y-from.Y)
+	for _, id := range ids[1:] {
+		c := cells[id].Center
+		d := math.Hypot(c.X-from.X, c.Y-from.Y)
+		if d < bestD {
+			best = c
+			bestD = d
+		}
+	}
+	return best
+}
+
+func toNearestEdge(p Point, w, h float64) (float64, float64) {
+	// Return unit vector pointing to the nearest map edge.
+	dists := []struct {
+		dx, dy, d float64
+	}{
+		{-1, 0, p.X},    // west
+		{1, 0, w - p.X}, // east
+		{0, -1, p.Y},    // north
+		{0, 1, h - p.Y}, // south
+	}
+	best := dists[0]
+	for _, d := range dists[1:] {
+		if d.d < best.d {
+			best = d
+		}
+	}
+	return best.dx, best.dy
+}
+
+func cellTouchesBorder(c *Cell, w, h float64) bool {
+	const margin = 1.5
+	for _, v := range c.Vertices {
+		if v.X <= margin || v.X >= w-margin || v.Y <= margin || v.Y >= h-margin {
+			return true
+		}
+	}
+	return false
+}
+
+func reachedValidEnd(c *Cell, end string, w, h float64, isCoast, isLake func(*Cell) bool) bool {
+	switch end {
+	case "coast":
+		return isCoast(c) || c.River // any river-connected water counts
+	case "lake":
+		return isLake(c)
+	case "offmap":
+		return cellTouchesBorder(c, w, h)
+	}
+	return false
+}
+
+// routeRiver greedily routes until it reaches a valid hydrological endpoint.
 func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
-	used map[int]bool, end string, targetLen float64,
-	straightness, tx, ty float64) []int {
-	const maxSteps = 200
+	used map[int]bool, spec RiverSpec, tx, ty float64,
+	isCoast, isLake func(*Cell) bool, lakeIDs []int,
+	rng *rand.Rand) []int {
+
+	const maxSteps = 250
 	path := []int{srcID}
 	visited := map[int]bool{srcID: true}
 	cur := srcID
 	src := cells[srcID].Center
 
 	maxDim := math.Max(w, h)
-	alignWeight := straightness * maxDim * 1.5
+	alignWeight := spec.Straightness * maxDim * 1.5
+	// Meander perturbs local ranking without overriding water preference —
+	// smaller than the greedy distToEdge range so rivers still progress.
+	meanderWeight := spec.Meander * 80
 
 	for step := 0; step < maxSteps; step++ {
-		c := cells[cur]
+		c := &cells[cur]
 
-		if end == "coast" && c.Terrain == "water" {
-			break
-		}
-		if end == "inland" {
-			d := math.Hypot(c.Center.X-src.X, c.Center.Y-src.Y)
-			if d >= targetLen && step >= 3 {
+		// Termination — rivers always end at water or, for offmap, the map edge.
+		// The routing score prefers the configured end-type, but any water is a
+		// valid terminus (rivers never stop on dry land).
+		if step >= 1 {
+			if c.Terrain == "water" {
 				break
 			}
-			if c.Terrain == "water" {
+			if spec.End == "offmap" && cellTouchesBorder(c, w, h) {
 				break
 			}
 		}
@@ -166,29 +266,19 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 		best := -1
 		bestScore := math.MaxFloat64
 		curCenter := c.Center
+
 		for _, nb := range neighbors[cur] {
 			if visited[nb] {
 				continue
 			}
-			nc := cells[nb]
-			var score float64
-			switch end {
-			case "inland":
-				d := math.Hypot(nc.Center.X-src.X, nc.Center.Y-src.Y)
-				score = -d + (1 / (distToEdge(nc.Center, w, h) + 1))
-				if nc.Terrain == "water" {
-					score += 1e6
-				}
-			default: // "coast"
-				score = distToEdge(nc.Center, w, h)
-				if nc.Terrain == "water" {
-					score -= 1e9
-				}
-			}
+			nc := &cells[nb]
+
+			score := scoreForEnd(nc, spec.End, src, w, h, isCoast, isLake, lakeIDs, cells)
+
 			if used[nb] {
 				score += 500
 			}
-			// Straightness bias: reward neighbors aligned with target direction.
+
 			if alignWeight > 0 {
 				mx := nc.Center.X - curCenter.X
 				my := nc.Center.Y - curCenter.Y
@@ -198,6 +288,10 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 					score -= align * alignWeight
 				}
 			}
+			if meanderWeight > 0 {
+				score += (rng.Float64()*2 - 1) * meanderWeight
+			}
+
 			if score < bestScore {
 				bestScore = score
 				best = nb
@@ -211,6 +305,43 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 		cur = best
 	}
 	return path
+}
+
+func scoreForEnd(nc *Cell, end string, src Point, w, h float64,
+	isCoast, isLake func(*Cell) bool, lakeIDs []int, cells []Cell) float64 {
+
+	switch end {
+	case "coast":
+		score := distToEdge(nc.Center, w, h)
+		if isCoast(nc) {
+			score -= 1e9
+		}
+		if isLake(nc) || nc.River {
+			score += 1e6 // avoid wrong water
+		}
+		return score
+	case "lake":
+		if isLake(nc) {
+			return -1e9
+		}
+		// Distance to nearest lake cell, biased to avoid other water.
+		score := 0.0
+		if len(lakeIDs) > 0 {
+			target := nearestCellCenter(nc.Center, lakeIDs, cells)
+			score = math.Hypot(target.X-nc.Center.X, target.Y-nc.Center.Y)
+		}
+		if isCoast(nc) || nc.River {
+			score += 1e6
+		}
+		return score
+	case "offmap":
+		score := distToEdge(nc.Center, w, h) // lower = nearer to edge = better
+		if nc.Terrain == "water" {
+			score += 1e6
+		}
+		return score
+	}
+	return math.MaxFloat64
 }
 
 func distToEdge(p Point, w, h float64) float64 {

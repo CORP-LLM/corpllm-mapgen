@@ -260,12 +260,21 @@ button.secondary:hover { background: var(--dim); color: var(--bg); }
   gap: 4px;
   align-items: center;
 }
-.river-row-bottom label {
+.river-row-bottom label,
+.river-row-preset label {
   color: var(--dim);
   width: 46px;
   min-width: 46px;
 }
 .river-row-bottom input[type="range"] {
+  flex: 1;
+}
+.river-row-preset {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.river-row-preset select {
   flex: 1;
 }
 .btn-remove {
