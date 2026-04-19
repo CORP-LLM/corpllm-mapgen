@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAPGEN // CORPLLM</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <button id="sidebar-toggle" title="Toggle sidebar">&#9664;</button>
+    <div id="sidebar-content">
+      <div class="sidebar-title">MAP<span>GEN</span></div>
+
+      <!-- Base -->
+      <div class="section">
+        <div class="section-title">Base</div>
+        <div class="seed-row">
+          <input type="number" id="cfg-seed" value="42" placeholder="seed">
+          <button id="btn-random" class="secondary">RND</button>
+        </div>
+        <div class="dim-row">
+          <label>W</label>
+          <input type="number" id="cfg-width" value="1000" min="100" max="10000">
+          <label>H</label>
+          <input type="number" id="cfg-height" value="800" min="100" max="10000">
+        </div>
+        <div class="field">
+          <label>Cells</label>
+          <input type="range" id="cfg-cells" min="100" max="2000" value="500">
+          <span class="range-val" id="cfg-cells-val">500</span>
+        </div>
+        <div class="field">
+          <label>Relax</label>
+          <input type="range" id="cfg-relax" min="0" max="10" value="3">
+          <span class="range-val" id="cfg-relax-val">3</span>
+        </div>
+      </div>
+
+      <!-- Coast -->
+      <div class="section">
+        <div class="section-title">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-coast-en" checked> Coast
+          </label>
+        </div>
+        <div id="coast-opts">
+          <div class="field">
+            <label>Side</label>
+            <select id="cfg-coast-side">
+              <option value="north">North</option>
+              <option value="south" selected>South</option>
+              <option value="east">East</option>
+              <option value="west">West</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Noise</label>
+            <input type="range" id="cfg-coast-noise" min="0" max="100" value="50">
+            <span class="range-val" id="cfg-coast-noise-val">0.50</span>
+          </div>
+          <div class="field">
+            <label>Water%</label>
+            <input type="range" id="cfg-water-ratio" min="5" max="80" value="25">
+            <span class="range-val" id="cfg-water-ratio-val">25%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rivers -->
+      <div class="section">
+        <div class="section-title">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-rivers-en" checked> Rivers
+          </label>
+        </div>
+        <div id="rivers-opts">
+          <div class="field">
+            <label>Count</label>
+            <input type="range" id="cfg-river-count" min="0" max="20" value="3">
+            <span class="range-val" id="cfg-river-count-val">3</span>
+          </div>
+          <div class="field">
+            <label>Width</label>
+            <select id="cfg-river-width">
+              <option value="narrow">Narrow</option>
+              <option value="medium" selected>Medium</option>
+              <option value="wide">Wide</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lakes -->
+      <div class="section">
+        <div class="section-title">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-lakes-en" checked> Lakes
+          </label>
+        </div>
+        <div id="lakes-opts">
+          <div class="field">
+            <label>Count</label>
+            <input type="range" id="cfg-lake-count" min="0" max="20" value="5">
+            <span class="range-val" id="cfg-lake-count-val">5</span>
+          </div>
+          <div class="field">
+            <label>Size</label>
+            <select id="cfg-lake-size">
+              <option value="small">Small</option>
+              <option value="medium" selected>Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-generate">&#9654; GENERATE</button>
+    </div>
+  </aside>
+
+  <!-- Canvas area -->
+  <div id="canvas-wrap">
+    <canvas id="map-canvas"></canvas>
+
+    <div id="toolbar">
+      <button id="btn-import" class="secondary">IMPORT</button>
+      <button id="btn-export" class="secondary">EXPORT</button>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+    </div>
+
+    <div id="empty-state">
+      <div class="empty-icon">&#9671;</div>
+      <div>CONFIGURE AND GENERATE</div>
+    </div>
+
+    <div id="statusbar"></div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".json" style="display:none">
+<script src="app.js"></script>
+</body>
+</html>
