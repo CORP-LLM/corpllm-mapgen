@@ -58,12 +58,13 @@ type Coastline struct {
 
 // Highway is a cell path connecting two map borders.
 // A* routed with penalties for elevation change and water crossings.
+// No width — all highways are the same physical size (4-lane street
+// asset in the game); they're a logical transport layer, not terrain.
 type Highway struct {
-	ID       int    `json:"id"`
-	CellPath []int  `json:"cellPath"`
-	From     Point  `json:"from"`
-	To       Point  `json:"to"`
-	Width    string `json:"width"`
+	ID       int   `json:"id"`
+	CellPath []int `json:"cellPath"`
+	From     Point `json:"from"`
+	To       Point `json:"to"`
 }
 
 // Bounds is the map rectangle.

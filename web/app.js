@@ -433,10 +433,12 @@ function render() {
     };
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    // Fixed width — highways are a 4-lane game asset, not a terrain feature
+    // with varying size.
+    const baseW = 2.6;
     for (const hw of terrain.highways) {
       const cp = hw.cellPath;
       if (!cp || cp.length < 2) continue;
-      const baseW = { narrow: 1.6, medium: 2.6, wide: 4.0 }[hw.width] || 2.6;
       const first = cellById.get(cp[0]);
       const last  = cellById.get(cp[cp.length - 1]);
       if (!first || !last) continue;
@@ -717,16 +719,14 @@ function addLakeRow(size = 'medium') {
 function readHighwayList() {
   const rows = el('highways-list').querySelectorAll('.dyn-row');
   return Array.from(rows).map(row => ({
-    width: row.querySelector('.highway-width').value,
-    from:  row.querySelector('.highway-from').value,
-    to:    row.querySelector('.highway-to').value,
+    from: row.querySelector('.highway-from').value,
+    to:   row.querySelector('.highway-to').value,
   }));
 }
 
-function addHighwayRow(width = 'medium', from = 'north', to = 'south') {
+function addHighwayRow(from = 'north', to = 'south') {
   const tpl = el('highway-row-template');
   const row = tpl.content.firstElementChild.cloneNode(true);
-  row.querySelector('.highway-width').value = width;
   row.querySelector('.highway-from').value = from;
   row.querySelector('.highway-to').value = to;
   row.querySelector('.btn-remove').addEventListener('click', () => row.remove());

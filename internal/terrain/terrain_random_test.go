@@ -537,6 +537,296 @@ func TestRiverMouthTouchesWater(t *testing.T) {
 	}
 }
 
+// TestRiverCellPathMatchesEdges verifies the CellPath in the API response
+// is consistent with the edge Path — each consecutive cell pair shares the
+// edge at the corresponding position.
+func TestRiverCellPathMatchesEdges(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, rv := range tm.Rivers {
+			if len(rv.CellPath) != len(rv.Path)+1 {
+				t.Errorf("seed %d: river %d CellPath len %d, Path len %d (expected CellPath = Path+1)",
+					cfg.Seed, rv.ID, len(rv.CellPath), len(rv.Path))
+				continue
+			}
+			for k, eid := range rv.Path {
+				e := tm.Edges[eid]
+				a, b := rv.CellPath[k], rv.CellPath[k+1]
+				match := (e.Cells[0] == a && e.Cells[1] == b) || (e.Cells[0] == b && e.Cells[1] == a)
+				if !match {
+					t.Errorf("seed %d: river %d edge[%d] cells %v don't connect %d→%d",
+						cfg.Seed, rv.ID, k, e.Cells, a, b)
+				}
+			}
+		}
+	}
+}
+
+// TestRiverStylesProduceDifferentPaths verifies that the style-preset
+// parameters actually change the generated river path via sinuosity
+// (path length ÷ straight-line distance from source to mouth). Straighter
+// styles should have sinuosity closer to 1.0; meandering ones higher.
+func TestRiverStylesProduceDifferentPaths(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	sinuosity := func(rv *River, cells []Cell) float64 {
+		pathLen := 0.0
+		for i := 0; i < len(rv.CellPath)-1; i++ {
+			a := cells[rv.CellPath[i]].Center
+			b := cells[rv.CellPath[i+1]].Center
+			pathLen += math.Hypot(b.X-a.X, b.Y-a.Y)
+		}
+		straight := math.Hypot(rv.Mouth.X-rv.Source.X, rv.Mouth.Y-rv.Source.Y)
+		if straight < 5 {
+			return 1
+		}
+		return pathLen / straight
+	}
+	runStyle := func(straight, meander float64) float64 {
+		var sum float64
+		count := 0
+		for i := 0; i < 15; i++ {
+			cfg := randomConfig(rng.Int63())
+			cfg.CellCount = 300 // larger map → more meaningful paths
+			cfg.Terrain.LakesEnabled = false
+			cfg.Terrain.Rivers = []RiverSpec{
+				{Width: "medium", Origin: "border", End: "coast",
+					Straightness: straight, Meander: meander},
+			}
+			tm, _ := Generate(cfg)
+			if len(tm.Rivers) > 0 && len(tm.Rivers[0].CellPath) >= 5 {
+				sum += sinuosity(&tm.Rivers[0], tm.Cells)
+				count++
+			}
+		}
+		if count == 0 {
+			return 0
+		}
+		return sum / float64(count)
+	}
+	concrete := runStyle(1.0, 0)
+	chaotic := runStyle(0, 1.0)
+	if concrete == 0 || chaotic == 0 {
+		t.Skip("not enough rivers generated")
+	}
+	// Concrete (max straightness, no meander) should be less winding than
+	// fully chaotic (no straightness, max meander). Big margin to avoid
+	// flake — the two styles are extreme opposites.
+	if concrete >= chaotic-0.05 {
+		t.Errorf("concrete sinuosity %.3f not meaningfully < chaotic %.3f (%.3f margin) — style knobs aren't differentiating paths",
+			concrete, chaotic, chaotic-concrete)
+	}
+}
+
+// TestElevationRange verifies the invariants of the elevation field:
+// land cells > 0, water cells ≤ 0, and everything within [-1, 1].
+func TestElevationRange(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 8; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, c := range tm.Cells {
+			if c.Elevation < -1.01 || c.Elevation > 1.01 {
+				t.Errorf("seed %d: cell %d elevation %.3f outside [-1,1]",
+					cfg.Seed, c.ID, c.Elevation)
+			}
+			if c.Terrain == "land" && c.Elevation <= 0 {
+				t.Errorf("seed %d: land cell %d has non-positive elevation %.3f",
+					cfg.Seed, c.ID, c.Elevation)
+			}
+			if c.Terrain == "water" && c.Elevation > 0 {
+				t.Errorf("seed %d: water cell %d has positive elevation %.3f",
+					cfg.Seed, c.ID, c.Elevation)
+			}
+		}
+	}
+}
+
+// TestPitFillGuaranteesDownhillPath verifies that after pit-filling, every
+// land cell has at least one neighbor with strictly-lower elevation. Without
+// this property, rivers would get stuck in basins.
+func TestPitFillGuaranteesDownhillPath(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		neighbors := make(map[int][]int, len(tm.Cells))
+		for _, e := range tm.Edges {
+			neighbors[e.Cells[0]] = append(neighbors[e.Cells[0]], e.Cells[1])
+			neighbors[e.Cells[1]] = append(neighbors[e.Cells[1]], e.Cells[0])
+		}
+		var stuck int
+		for _, c := range tm.Cells {
+			if c.Terrain != "land" {
+				continue
+			}
+			hasDown := false
+			for _, nb := range neighbors[c.ID] {
+				if tm.Cells[nb].Elevation < c.Elevation {
+					hasDown = true
+					break
+				}
+			}
+			if !hasDown {
+				stuck++
+			}
+		}
+		if stuck > 0 {
+			t.Errorf("seed %d: %d land cells have no downhill neighbor (pit-fill incomplete)",
+				cfg.Seed, stuck)
+		}
+	}
+}
+
+// TestWaterBathymetryCoastToDeep verifies the frontend's depth-shading assumption:
+// water cells adjacent to land have higher elevation (closer to 0) than
+// deep-water cells (more negative).
+func TestWaterBathymetryCoastToDeep(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 5; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.LakesEnabled = false
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		neighbors := make(map[int][]int, len(tm.Cells))
+		for _, e := range tm.Edges {
+			neighbors[e.Cells[0]] = append(neighbors[e.Cells[0]], e.Cells[1])
+			neighbors[e.Cells[1]] = append(neighbors[e.Cells[1]], e.Cells[0])
+		}
+		// For every water cell: any water neighbor farther from land should have
+		// lower (more negative) elevation, or equal if tied.
+		// Simpler spot check: shoreline water cells (adjacent to land) should
+		// have higher elevation than non-shoreline water cells on average.
+		var shoreSum, deepSum float64
+		var shoreN, deepN int
+		for _, c := range tm.Cells {
+			if c.Terrain != "water" {
+				continue
+			}
+			shore := false
+			for _, nb := range neighbors[c.ID] {
+				if tm.Cells[nb].Terrain == "land" {
+					shore = true
+					break
+				}
+			}
+			if shore {
+				shoreSum += c.Elevation
+				shoreN++
+			} else {
+				deepSum += c.Elevation
+				deepN++
+			}
+		}
+		if shoreN == 0 || deepN == 0 {
+			continue
+		}
+		shoreAvg := shoreSum / float64(shoreN)
+		deepAvg := deepSum / float64(deepN)
+		if shoreAvg <= deepAvg {
+			t.Errorf("seed %d: shore avg %.3f ≤ deep avg %.3f — bathymetry inverted",
+				cfg.Seed, shoreAvg, deepAvg)
+		}
+	}
+}
+
+// TestTributaryMergesIntoRiver verifies that when multiple rivers are routed,
+// a later river can terminate at a cell belonging to an earlier river
+// (tributary merge). Confirms the tributaryBonus attractor works.
+func TestTributaryMergesIntoRiver(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var mergedSeeds, totalSeeds int
+	for i := 0; i < 20; i++ {
+		cfg := randomConfig(rng.Int63())
+		cfg.Terrain.LakesEnabled = false
+		// Four rivers in a small map → high chance of tributary encounters.
+		cfg.Terrain.Rivers = []RiverSpec{
+			{Width: "wide", Origin: "border", End: "coast"},
+			{Width: "medium", Origin: "border", End: "coast"},
+			{Width: "medium", Origin: "border", End: "coast"},
+			{Width: "narrow", Origin: "border", End: "coast"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Rivers) < 2 {
+			continue
+		}
+		totalSeeds++
+		// Check if any river's MOUTH cell is already a river cell from another
+		// river (merged junction).
+		riverCellToRiverID := make(map[int]int)
+		for _, rv := range tm.Rivers {
+			for i, cid := range rv.CellPath {
+				if i == len(rv.CellPath)-1 {
+					continue // don't count own mouth
+				}
+				riverCellToRiverID[cid] = rv.ID
+			}
+		}
+		for _, rv := range tm.Rivers {
+			mouthCell := rv.CellPath[len(rv.CellPath)-1]
+			if otherID, ok := riverCellToRiverID[mouthCell]; ok && otherID != rv.ID {
+				mergedSeeds++
+				break
+			}
+		}
+	}
+	if totalSeeds == 0 {
+		t.Skip("not enough multi-river samples")
+	}
+	if mergedSeeds == 0 {
+		t.Errorf("over %d seeds with ≥2 rivers, never merged — tributary routing broken",
+			totalSeeds)
+	}
+}
+
+// TestHighwayAvoidsWaterWhenLandAvailable verifies the A* cost function:
+// a highway between two land endpoints should prefer land-only paths when
+// possible rather than routing through the sea.
+func TestHighwayAvoidsWaterWhenLandAvailable(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 8; i++ {
+		cfg := randomConfig(rng.Int63())
+		// No coast so the map is all land — forces a pure-land routing test.
+		cfg.Terrain.CoastEnabled = false
+		cfg.Terrain.LakesEnabled = false
+		cfg.Terrain.RiversEnabled = false
+		cfg.Terrain.HighwaysEnabled = true
+		cfg.Terrain.Highways = []HighwaySpec{
+			{From: "north", To: "south"},
+		}
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Highways) == 0 {
+			continue
+		}
+		for _, hw := range tm.Highways {
+			for _, cid := range hw.CellPath {
+				if tm.Cells[cid].Terrain == "water" {
+					t.Errorf("seed %d: highway %d passes through water cell %d on all-land map",
+						cfg.Seed, hw.ID, cid)
+				}
+			}
+		}
+	}
+}
+
 // TestHighwaysConnectBorders verifies A*-routed highways start at the
 // configured "from" border and end at the configured "to" border.
 func TestHighwaysConnectBorders(t *testing.T) {
@@ -545,8 +835,8 @@ func TestHighwaysConnectBorders(t *testing.T) {
 		cfg := randomConfig(rng.Int63())
 		cfg.Terrain.HighwaysEnabled = true
 		cfg.Terrain.Highways = []HighwaySpec{
-			{Width: "medium", From: "north", To: "south"},
-			{Width: "wide", From: "west", To: "east"},
+			{From: "north", To: "south"},
+			{From: "west", To: "east"},
 		}
 		tm, err := Generate(cfg)
 		if err != nil {

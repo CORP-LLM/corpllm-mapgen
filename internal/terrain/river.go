@@ -249,10 +249,13 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 	cur := srcID
 
 	maxDim := math.Max(w, h)
-	alignWeight := spec.Straightness * maxDim * 1.5
-	// Meander perturbs local ranking without overriding water preference —
-	// smaller than the greedy distToEdge range so rivers still progress.
-	meanderWeight := spec.Meander * 80
+	// Scoring weights tuned to be comparable to the elevation term.
+	// With dElev per step ≈ 0.02–0.1, elevScale (=3000) gives step-score ≈ 60–300.
+	// Straightness and meander need similar magnitudes to actually affect choice.
+	const elevScale = 3000.0
+	const uphillExtra = 6000.0
+	alignWeight := spec.Straightness * maxDim * 0.6 // up to ~600 at max straight
+	meanderWeight := spec.Meander * 500             // up to ±500 random swing
 
 	for step := 0; step < maxSteps; step++ {
 		c := &cells[cur]
@@ -282,10 +285,10 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 
 			// Base score: elevation difference (negative = downhill = better).
 			dElev := nc.Elevation - curElev
-			score := dElev * 10000
+			score := dElev * elevScale
 			// Uphill penalty compounds — strongly discouraged.
 			if dElev > 0 {
-				score += dElev * 20000
+				score += dElev * uphillExtra
 			}
 
 			// End-type preferences modulate the downhill choice.

@@ -235,22 +235,17 @@
 
 <template id="highway-row-template">
   <div class="dyn-row">
-    <select class="highway-width" title="Stroke width — purely cosmetic, routing ignores it">
-      <option value="narrow">Narrow</option>
-      <option value="medium" selected>Medium</option>
-      <option value="wide">Wide</option>
-    </select>
     <select class="highway-from" title="Enter border">
-      <option value="north" selected>N</option>
-      <option value="south">S</option>
-      <option value="east">E</option>
-      <option value="west">W</option>
+      <option value="north" selected>From N</option>
+      <option value="south">From S</option>
+      <option value="east">From E</option>
+      <option value="west">From W</option>
     </select>
     <select class="highway-to" title="Exit border">
-      <option value="north">N</option>
-      <option value="south" selected>S</option>
-      <option value="east">E</option>
-      <option value="west">W</option>
+      <option value="north">To N</option>
+      <option value="south" selected>To S</option>
+      <option value="east">To E</option>
+      <option value="west">To W</option>
     </select>
     <button class="btn-remove" title="Remove this highway">&times;</button>
   </div>

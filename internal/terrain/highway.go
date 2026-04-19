@@ -42,16 +42,11 @@ func generateHighways(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand
 			used[cid] = true
 		}
 
-		width := spec.Width
-		if width == "" {
-			width = "medium"
-		}
 		highways = append(highways, Highway{
 			ID:       id,
 			CellPath: path,
 			From:     cells[path[0]].Center,
 			To:       cells[path[len(path)-1]].Center,
-			Width:    width,
 		})
 	}
 	return highways

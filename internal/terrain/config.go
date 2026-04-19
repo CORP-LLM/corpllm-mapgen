@@ -18,12 +18,12 @@ type LakeSpec struct {
 	Size string `json:"size"` // "small", "medium", "large"
 }
 
-// HighwaySpec defines one highway: which borders it enters / exits and
-// its visual width. Width is purely cosmetic; routing is A* based.
+// HighwaySpec defines one highway: which borders it enters / exits.
+// No width — highways are a game-mechanic transport layer (4-lane
+// street asset), not part of the terrain topology.
 type HighwaySpec struct {
-	Width string `json:"width"` // "narrow", "medium", "wide"
-	From  string `json:"from"`  // "north", "south", "east", "west"
-	To    string `json:"to"`    // same enum; must differ from From
+	From string `json:"from"` // "north", "south", "east", "west"
+	To   string `json:"to"`   // same enum; must differ from From
 }
 
 // TerrainConfig holds feature-flag parameters.
@@ -83,9 +83,6 @@ func (c *Config) Defaults() {
 	}
 	for i := range c.Terrain.Highways {
 		h := &c.Terrain.Highways[i]
-		if h.Width == "" {
-			h.Width = "medium"
-		}
 		if h.From == "" {
 			h.From = "north"
 		}
@@ -157,9 +154,6 @@ func (c *Config) Validate() error {
 	}
 	validSides4 := map[string]bool{"north": true, "south": true, "east": true, "west": true}
 	for _, hw := range t.Highways {
-		if hw.Width != "" && !validWidths[hw.Width] {
-			return errors.New("highway width must be narrow/medium/wide")
-		}
 		if hw.From != "" && !validSides4[hw.From] {
 			return errors.New("highway from must be north/south/east/west")
 		}

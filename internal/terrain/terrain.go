@@ -64,6 +64,16 @@ func Generate(cfg *Config) (*Terrain, error) {
 		rivers = generateRivers(cells, edges, diag, cfg, rng)
 	}
 
+	// Rivers and lakes turned land cells into water — zero their elevation
+	// (water surface ≈ 0) and recompute bathymetry so depth is consistent
+	// with the final water layout.
+	for i := range cells {
+		if cells[i].Terrain == "water" && cells[i].Elevation > 0 {
+			cells[i].Elevation = 0
+		}
+	}
+	assignWaterDepth(cells, diag.neighbors)
+
 	// Rebuild edges after all water assignment (rivers + lakes changed cell terrain).
 	edges = buildEdges(diag, cells)
 	// Re-mark river edges lost during edge rebuild.
