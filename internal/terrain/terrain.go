@@ -47,6 +47,7 @@ func Generate(cfg *Config) (*Terrain, error) {
 	// 5b. Elevation (after coast so water cells are known = 0 height).
 	assignElevation(cells, cfg)
 	fillPits(cells, diag.neighbors)
+	assignWaterDepth(cells, diag.neighbors)
 
 	// 6. Build edges.
 	edges := buildEdges(diag, cells)

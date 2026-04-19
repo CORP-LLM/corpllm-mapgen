@@ -56,6 +56,49 @@ func assignElevation(cells []Cell, cfg *Config) {
 	}
 }
 
+// assignWaterDepth computes negative "elevation" for water cells = BFS distance
+// from the nearest land cell, normalized to [-1, 0]. Shallow water (coastline)
+// is near 0, deep ocean is closer to -1. Reused by the frontend for bathymetry.
+func assignWaterDepth(cells []Cell, neighbors [][]int) {
+	dist := make([]int, len(cells))
+	for i := range dist {
+		dist[i] = -1
+	}
+	var queue []int
+	for i := range cells {
+		if cells[i].Terrain == "land" {
+			dist[i] = 0
+			queue = append(queue, i)
+		}
+	}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, nb := range neighbors[cur] {
+			if dist[nb] == -1 && cells[nb].Terrain == "water" {
+				dist[nb] = dist[cur] + 1
+				queue = append(queue, nb)
+			}
+		}
+	}
+	maxD := 0
+	for _, d := range dist {
+		if d > maxD {
+			maxD = d
+		}
+	}
+	if maxD == 0 {
+		return
+	}
+	for i := range cells {
+		if cells[i].Terrain == "water" && dist[i] > 0 {
+			// Negative: deeper = more negative. Lakes (often just 1–2 from land)
+			// stay near the surface; open ocean dives toward -1.
+			cells[i].Elevation = -float64(dist[i]) / float64(maxD)
+		}
+	}
+}
+
 // fillPits raises the elevation of local minima so every land cell has a
 // strictly-downhill path to water. Without this, Perlin noise produces
 // countless little pits where rivers get stuck after 1–2 steps.

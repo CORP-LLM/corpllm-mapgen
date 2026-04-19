@@ -47,27 +47,41 @@ const C = {
   coast:      '#3a9ab8',
 };
 
-// Interpolate land color from lowland (dark green) through hills (olive)
-// to peaks (warm gray/brown) for a readable topographic feel.
-function landColor(elev) {
-  const stops = [
-    { t: 0.00, r: 22, g: 48, b: 22 },  // lowland dark green
-    { t: 0.45, r: 58, g: 72, b: 38 },  // hills olive
-    { t: 0.80, r: 96, g: 92, b: 62 },  // high ground khaki
-    { t: 1.00, r: 150, g: 138, b: 110 }, // peaks warm gray
-  ];
-  const t = Math.max(0, Math.min(1, elev));
+// Interpolate a color from a list of elevation stops.
+function stopColor(t, stops) {
+  t = Math.max(stops[0].t, Math.min(stops[stops.length - 1].t, t));
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i], b = stops[i + 1];
     if (t >= a.t && t <= b.t) {
       const k = (t - a.t) / (b.t - a.t);
-      const r = Math.round(a.r + (b.r - a.r) * k);
-      const g = Math.round(a.g + (b.g - a.g) * k);
+      const r  = Math.round(a.r + (b.r - a.r) * k);
+      const g  = Math.round(a.g + (b.g - a.g) * k);
       const bl = Math.round(a.b + (b.b - a.b) * k);
       return `rgb(${r},${g},${bl})`;
     }
   }
-  return C.land;
+  return `rgb(${stops[0].r},${stops[0].g},${stops[0].b})`;
+}
+
+// Land: dark green (low) → olive → khaki → warm peaks.
+function landColor(elev) {
+  return stopColor(elev, [
+    { t: 0.00, r:  22, g:  48, b:  22 },
+    { t: 0.45, r:  58, g:  72, b:  38 },
+    { t: 0.80, r:  96, g:  92, b:  62 },
+    { t: 1.00, r: 150, g: 138, b: 110 },
+  ]);
+}
+
+// Water depth: shallow (near land) is a brighter teal, deep ocean is near-black.
+// elev is negative for water: 0 = at the coast, -1 = deepest.
+function waterColor(elev) {
+  const d = Math.max(0, Math.min(1, -elev));
+  return stopColor(d, [
+    { t: 0.00, r: 32, g: 74, b: 96 },   // shallow teal
+    { t: 0.40, r: 16, g: 42, b: 66 },   // mid blue
+    { t: 1.00, r:  5, g: 14, b: 28 },   // deep almost-black
+  ]);
 }
 
 // ── Organic smoothing ─────────────────────────────────────────────────────────
@@ -82,6 +96,16 @@ function noise2D(x, y) {
 }
 
 function subdividedEdge(a, b) {
+  // Clamp endpoints to map bounds — Voronoi clipping may leave float slop.
+  const bw = terrain ? terrain.bounds.width : Infinity;
+  const bh = terrain ? terrain.bounds.height : Infinity;
+  const clampPt = p => ({
+    x: Math.max(0, Math.min(bw, p.x)),
+    y: Math.max(0, Math.min(bh, p.y)),
+  });
+  a = clampPt(a);
+  b = clampPt(b);
+
   // Canonical order → identical result regardless of traversal direction.
   const reversed = a.x > b.x || (a.x === b.x && a.y > b.y);
   const v1 = reversed ? b : a;
@@ -90,10 +114,7 @@ function subdividedEdge(a, b) {
   const len = Math.hypot(dx, dy);
   if (len < 0.5 || render_.subdiv < 2) return reversed ? [b, a] : [a, b];
 
-  // Detect map-border edges: if both endpoints sit on a map boundary, keep
-  // the edge straight. Otherwise wiggle pushes cells outside the map.
-  const bw = terrain ? terrain.bounds.width : Infinity;
-  const bh = terrain ? terrain.bounds.height : Infinity;
+  // Both endpoints on the map border → keep edge straight (no wiggle).
   const m = 1.5;
   const atBorderA = v1.x <= m || v1.x >= bw - m || v1.y <= m || v1.y >= bh - m;
   const atBorderB = v2.x <= m || v2.x >= bw - m || v2.y <= m || v2.y >= bh - m;
@@ -198,8 +219,10 @@ function render() {
       ctx.fillStyle = C.riverCell;
     } else if (cell.terrain === 'land') {
       ctx.fillStyle = landColor(cell.elevation || 0);
+    } else if (lakeCellSet.has(cell.id)) {
+      ctx.fillStyle = C.lake;
     } else {
-      ctx.fillStyle = lakeCellSet.has(cell.id) ? C.lake : C.water;
+      ctx.fillStyle = waterColor(cell.elevation || 0);
     }
     ctx.fill();
   }

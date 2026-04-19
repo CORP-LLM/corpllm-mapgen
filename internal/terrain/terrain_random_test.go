@@ -354,6 +354,8 @@ func TestRiverEndLake(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		cfg := randomConfig(rng.Int63())
 		cfg.CellCount = 250
+		// Disable coast so the only drainage option is the lakes.
+		cfg.Terrain.CoastEnabled = false
 		cfg.Terrain.Lakes = []LakeSpec{{Size: "large"}, {Size: "large"}, {Size: "large"}}
 		cfg.Terrain.Rivers = []RiverSpec{
 			{Width: "medium", Origin: "inland", End: "lake"},
