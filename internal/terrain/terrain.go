@@ -44,6 +44,9 @@ func Generate(cfg *Config) (*Terrain, error) {
 		removeInlandWater(cells, diag, cfg)
 	}
 
+	// 5b. Elevation (after coast so water cells are known = 0 height).
+	assignElevation(cells, cfg)
+
 	// 6. Build edges.
 	edges := buildEdges(diag, cells)
 

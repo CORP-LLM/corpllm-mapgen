@@ -7,11 +7,14 @@ type Point struct {
 }
 
 // Cell is a Voronoi polygon.
+// Elevation is [0,1], 1 = highest. Water cells are clamped to 0.
+// Rivers route strictly downhill by elevation (physical gravity model).
 type Cell struct {
 	ID        int     `json:"id"`
 	Center    Point   `json:"center"`
 	Vertices  []Point `json:"vertices"`
 	Terrain   string  `json:"terrain"`
+	Elevation float64 `json:"elevation"`
 	Neighbors []int   `json:"neighbors"`
 	River     bool    `json:"river"`
 	Lake      bool    `json:"lake"`

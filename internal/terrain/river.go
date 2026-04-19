@@ -240,7 +240,6 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 	path := []int{srcID}
 	visited := map[int]bool{srcID: true}
 	cur := srcID
-	src := cells[srcID].Center
 
 	maxDim := math.Max(w, h)
 	alignWeight := spec.Straightness * maxDim * 1.5
@@ -252,8 +251,6 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 		c := &cells[cur]
 
 		// Termination — rivers always end at water or, for offmap, the map edge.
-		// The routing score prefers the configured end-type, but any water is a
-		// valid terminus (rivers never stop on dry land).
 		if step >= 1 {
 			if c.Terrain == "water" {
 				break
@@ -265,20 +262,31 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 
 		best := -1
 		bestScore := math.MaxFloat64
+		curElev := c.Elevation
 		curCenter := c.Center
 
+		// Primary rule: water flows downhill. Heavily penalize any uphill move
+		// so rivers only climb if no downhill neighbor exists (last resort).
 		for _, nb := range neighbors[cur] {
 			if visited[nb] {
 				continue
 			}
 			nc := &cells[nb]
 
-			score := scoreForEnd(nc, spec.End, src, w, h, isCoast, isLake, lakeIDs, cells)
+			// Base score: elevation difference (negative = downhill = better).
+			dElev := nc.Elevation - curElev
+			score := dElev * 10000
+			// Uphill penalty compounds — strongly discouraged.
+			if dElev > 0 {
+				score += dElev * 20000
+			}
+
+			// End-type preferences modulate the downhill choice.
+			score += endPreferenceScore(nc, spec.End, w, h, isCoast, isLake, lakeIDs, cells)
 
 			if used[nb] {
 				score += 500
 			}
-
 			if alignWeight > 0 {
 				mx := nc.Center.X - curCenter.X
 				my := nc.Center.Y - curCenter.Y
@@ -297,9 +305,17 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 				best = nb
 			}
 		}
+
+		// No valid neighbor at all → river ends here.
 		if best == -1 {
 			break
 		}
+		// If every candidate was uphill, we're in a local minimum — terminate
+		// rather than climb. Real rivers pool up in basins (endorheic lakes).
+		if cells[best].Elevation > curElev+0.01 && step >= 1 {
+			break
+		}
+
 		path = append(path, best)
 		visited[best] = true
 		cur = best
@@ -307,41 +323,37 @@ func routeRiver(srcID int, cells []Cell, neighbors [][]int, w, h float64,
 	return path
 }
 
-func scoreForEnd(nc *Cell, end string, src Point, w, h float64,
+// endPreferenceScore adds a bias on top of the downhill score so rivers
+// prefer the configured terminus when multiple downhill neighbors exist.
+func endPreferenceScore(nc *Cell, end string, w, h float64,
 	isCoast, isLake func(*Cell) bool, lakeIDs []int, cells []Cell) float64 {
 
 	switch end {
 	case "coast":
-		score := distToEdge(nc.Center, w, h)
 		if isCoast(nc) {
-			score -= 1e9
+			return -1e9
 		}
-		if isLake(nc) || nc.River {
-			score += 1e6 // avoid wrong water
+		if isLake(nc) {
+			return 5000 // prefer continuing to coast over ending in lake
 		}
-		return score
 	case "lake":
 		if isLake(nc) {
 			return -1e9
 		}
-		// Distance to nearest lake cell, biased to avoid other water.
-		score := 0.0
+		if isCoast(nc) {
+			return 5000
+		}
 		if len(lakeIDs) > 0 {
 			target := nearestCellCenter(nc.Center, lakeIDs, cells)
-			score = math.Hypot(target.X-nc.Center.X, target.Y-nc.Center.Y)
+			return math.Hypot(target.X-nc.Center.X, target.Y-nc.Center.Y) * 5
 		}
-		if isCoast(nc) || nc.River {
-			score += 1e6
-		}
-		return score
 	case "offmap":
-		score := distToEdge(nc.Center, w, h) // lower = nearer to edge = better
 		if nc.Terrain == "water" {
-			score += 1e6
+			return 5000
 		}
-		return score
+		return distToEdge(nc.Center, w, h) * 3
 	}
-	return math.MaxFloat64
+	return 0
 }
 
 func distToEdge(p Point, w, h float64) float64 {

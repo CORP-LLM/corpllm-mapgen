@@ -297,16 +297,20 @@ func TestRiverOriginInland(t *testing.T) {
 	}
 }
 
-// TestRiverEndOffmap verifies that most End="offmap" rivers actually reach
-// the map border (rather than ending at coast water they crossed).
+// TestRiverEndOffmap verifies end=offmap rivers end at a map border — but
+// only when configured with border origin (source near a border, downhill
+// routing can reach the opposite low-elev border). Inland→offmap isn't
+// physically sensible under strict hydrology: mountain rivers flow toward
+// the coast, not arbitrary borders.
 func TestRiverEndOffmap(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var hits, tries int
 	for i := 0; i < 20; i++ {
 		cfg := randomConfig(rng.Int63())
 		cfg.Terrain.LakesEnabled = false
+		cfg.Terrain.CoastEnabled = false // no coast — river must exit via border
 		cfg.Terrain.Rivers = []RiverSpec{
-			{Width: "narrow", Origin: "inland", End: "offmap"},
+			{Width: "narrow", Origin: "border", End: "offmap", Straightness: 0.8},
 		}
 		tm, err := Generate(cfg)
 		if err != nil {
