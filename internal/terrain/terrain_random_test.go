@@ -152,6 +152,110 @@ func TestParameterSweep(t *testing.T) {
 	}
 }
 
+// TestLakesIsolatedFromOtherWater verifies lakes never touch coast water,
+// rivers, or other lakes — lake cells only border their own cluster or land.
+func TestLakesIsolatedFromOtherWater(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 15; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		if len(tm.Lakes) == 0 {
+			continue
+		}
+		// Group lake cells by their lake ID.
+		cellToLake := make(map[int]int, len(tm.Cells))
+		for _, lk := range tm.Lakes {
+			for _, cid := range lk.Cells {
+				cellToLake[cid] = lk.ID
+			}
+		}
+		// Build neighbor map.
+		neighbors := make(map[int][]int, len(tm.Cells))
+		for _, e := range tm.Edges {
+			neighbors[e.Cells[0]] = append(neighbors[e.Cells[0]], e.Cells[1])
+			neighbors[e.Cells[1]] = append(neighbors[e.Cells[1]], e.Cells[0])
+		}
+		// Every lake cell's water neighbors must be in the same lake.
+		for _, lk := range tm.Lakes {
+			for _, cid := range lk.Cells {
+				for _, nb := range neighbors[cid] {
+					if tm.Cells[nb].Terrain != "water" {
+						continue
+					}
+					if cellToLake[nb] != lk.ID {
+						t.Errorf("seed %d: lake %d cell %d has non-cluster water neighbor %d (lake=%d, river=%t)",
+							cfg.Seed, lk.ID, cid, nb, cellToLake[nb], tm.Cells[nb].River)
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestLakeCellsMarked verifies the Cell.Lake flag is set for every cell
+// listed in Terrain.Lakes — the frontend depends on this for rendering.
+func TestLakeCellsMarked(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, lk := range tm.Lakes {
+			for _, cid := range lk.Cells {
+				c := tm.Cells[cid]
+				if !c.Lake {
+					t.Errorf("seed %d: lake %d cell %d has Lake=false", cfg.Seed, lk.ID, cid)
+				}
+				if c.Terrain != "water" {
+					t.Errorf("seed %d: lake %d cell %d terrain=%q", cfg.Seed, lk.ID, cid, c.Terrain)
+				}
+			}
+		}
+		// No non-lake cell should have Lake=true.
+		inLake := make(map[int]bool)
+		for _, lk := range tm.Lakes {
+			for _, cid := range lk.Cells {
+				inLake[cid] = true
+			}
+		}
+		for _, c := range tm.Cells {
+			if c.Lake && !inLake[c.ID] {
+				t.Errorf("seed %d: cell %d has Lake=true but not in any lake", cfg.Seed, c.ID)
+			}
+		}
+	}
+}
+
+// TestLakeBordersNotCoastline verifies lake cell borders are not marked
+// as coastline — only ocean shorelines should be coastline.
+func TestLakeBordersNotCoastline(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < 10; i++ {
+		cfg := randomConfig(rng.Int63())
+		tm, err := Generate(cfg)
+		if err != nil {
+			t.Fatalf("seed %d: %v", cfg.Seed, err)
+		}
+		for _, e := range tm.Edges {
+			if !e.Coastline {
+				continue
+			}
+			ca, cb := tm.Cells[e.Cells[0]], tm.Cells[e.Cells[1]]
+			if ca.Lake || cb.Lake {
+				t.Errorf("seed %d: edge %d is coastline but adjacent to lake cell", cfg.Seed, e.ID)
+			}
+			if ca.River || cb.River {
+				t.Errorf("seed %d: edge %d is coastline but adjacent to river cell", cfg.Seed, e.ID)
+			}
+		}
+	}
+}
+
 // TestCoastNoiseExtremes tests both ends of the coast-noise spectrum.
 func TestCoastNoiseExtremes(t *testing.T) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))

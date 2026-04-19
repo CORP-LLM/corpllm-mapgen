@@ -14,6 +14,7 @@ type Cell struct {
 	Terrain   string  `json:"terrain"`
 	Neighbors []int   `json:"neighbors"`
 	River     bool    `json:"river"`
+	Lake      bool    `json:"lake"`
 	Coastline bool    `json:"coastline"`
 }
 

@@ -119,7 +119,7 @@ func buildEdges(diag *voronoiDiagram, cells []Cell) []Edge {
 }
 
 // extractCoastline marks coastline cells/edges and returns Coastline.
-// River cell borders are excluded — rivers are water but not coastline.
+// River and lake borders are excluded — only ocean shorelines are coastline.
 func extractCoastline(cells []Cell, edges []Edge) Coastline {
 	var coastEdgeIDs []int
 	for i := range edges {
@@ -127,7 +127,7 @@ func extractCoastline(cells []Cell, edges []Edge) Coastline {
 			continue
 		}
 		ca, cb := cells[edges[i].Cells[0]], cells[edges[i].Cells[1]]
-		if ca.River || cb.River {
+		if ca.River || cb.River || ca.Lake || cb.Lake {
 			continue
 		}
 		edges[i].Coastline = true

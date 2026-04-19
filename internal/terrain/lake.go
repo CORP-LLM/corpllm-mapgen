@@ -44,7 +44,19 @@ func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Ra
 		idx := rng.Intn(len(candidates))
 		seed := candidates[idx]
 		candidates = append(candidates[:idx], candidates[idx+1:]...)
-		if usedInLake[seed] {
+		if usedInLake[seed] || cells[seed].Terrain == "water" {
+			continue
+		}
+		// Re-validate: seed must still have no water neighbors, in case a
+		// previous lake or late-stage assignment changed the map.
+		seedStillValid := true
+		for _, nb := range diag.neighbors[seed] {
+			if cells[nb].Terrain == "water" {
+				seedStillValid = false
+				break
+			}
+		}
+		if !seedStillValid {
 			continue
 		}
 
@@ -60,6 +72,18 @@ func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Ra
 				if inCluster[nb] || cells[nb].Terrain == "water" || usedInLake[nb] {
 					continue
 				}
+				// Keep the lake isolated: reject candidates that touch
+				// non-cluster water (coast, rivers, other lakes).
+				touchesOuterWater := false
+				for _, nnb := range diag.neighbors[nb] {
+					if !inCluster[nnb] && cells[nnb].Terrain == "water" {
+						touchesOuterWater = true
+						break
+					}
+				}
+				if touchesOuterWater {
+					continue
+				}
 				cluster = append(cluster, nb)
 				inCluster[nb] = true
 				queue = append(queue, nb)
@@ -72,6 +96,7 @@ func generateLakes(cells []Cell, diag *voronoiDiagram, cfg *Config, rng *rand.Ra
 		// Mark cells as water.
 		for _, cid := range cluster {
 			cells[cid].Terrain = "water"
+			cells[cid].Lake = true
 			usedInLake[cid] = true
 		}
 
