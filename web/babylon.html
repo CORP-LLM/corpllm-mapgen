@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAPGEN // 3D Integration Preview</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #05070c; color: #b0b0c8;
+               font-family: 'Courier New', monospace; overflow: hidden; }
+  #canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; }
+  #hud    { position: absolute; top: 12px; left: 12px; background: rgba(10,14,22,0.85);
+             border: 1px solid #1a1a32; padding: 10px 14px; font-size: 11px;
+             letter-spacing: 1px; max-width: 340px; line-height: 1.5; z-index: 10; }
+  #hud h1 { margin: 0 0 6px; font-size: 13px; color: #00e5ff; letter-spacing: 3px; }
+  #hud a  { color: #00e5ff; }
+  #hud button { background: transparent; border: 1px solid #00e5ff; color: #00e5ff;
+                padding: 4px 8px; cursor: pointer; font-family: inherit; font-size: 10px;
+                letter-spacing: 1px; margin-right: 4px; margin-top: 4px; }
+  #hud button:hover { background: #00e5ff; color: #05070c; }
+  .stat { color: #606078; }
+  .ok   { color: #66dd88; }
+  .warn { color: #dd8855; }
+</style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="hud">
+    <h1>MAPGEN · 3D</h1>
+    <div>Integration preview — renders the terrain JSON directly into
+         a minimal Babylon.js scene. No assets yet, just per-biome
+         colored cells and spline-traced rivers/highways.</div>
+    <div style="margin-top:8px">
+      <button id="btn-regen">Regenerate</button>
+      <button id="btn-editor">2D Editor</button>
+    </div>
+    <div id="status" style="margin-top:8px" class="stat"></div>
+  </div>
+
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="babylon-demo.js"></script>
+</body>
+</html>
