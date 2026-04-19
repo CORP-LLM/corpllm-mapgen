@@ -71,16 +71,15 @@ func oppositeSide(s string) string {
 	return "south"
 }
 
-// highwayBorderCells returns land cells sitting within a small margin of
-// the given side. Water cells are excluded — highways can CROSS water
-// (bridges) but shouldn't start or end in the middle of the sea.
+// highwayBorderCells returns cells sitting within a small margin of the
+// given side. Land cells are preferred, but water cells are accepted as
+// fallback so a highway whose target side is the coast (e.g. from=N to=S
+// with coast=south) can still terminate — it just ends at the waterfront
+// and the render extends the stroke out to the map edge.
 func highwayBorderCells(cells []Cell, side string, w, h float64) []int {
 	const margin = 35.0
-	var out []int
+	var land, water []int
 	for _, c := range cells {
-		if c.Terrain != "land" {
-			continue
-		}
 		cx, cy := c.Center.X, c.Center.Y
 		match := false
 		switch side {
@@ -93,11 +92,19 @@ func highwayBorderCells(cells []Cell, side string, w, h float64) []int {
 		case "west":
 			match = cx <= margin
 		}
-		if match {
-			out = append(out, c.ID)
+		if !match {
+			continue
+		}
+		if c.Terrain == "land" {
+			land = append(land, c.ID)
+		} else {
+			water = append(water, c.ID)
 		}
 	}
-	return out
+	if len(land) > 0 {
+		return land
+	}
+	return water
 }
 
 // routeHighway returns the A*-optimal cell path from src to dst, or nil

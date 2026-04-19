@@ -552,8 +552,9 @@ func TestHighwaysConnectBorders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seed %d: %v", cfg.Seed, err)
 		}
-		if len(tm.Highways) == 0 {
-			continue
+		if len(tm.Highways) != len(cfg.Terrain.Highways) {
+			t.Errorf("seed %d: configured %d highways, generated %d",
+				cfg.Seed, len(cfg.Terrain.Highways), len(tm.Highways))
 		}
 		w, h := float64(cfg.Width), float64(cfg.Height)
 		const margin = 40.0
