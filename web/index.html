@@ -18,6 +18,17 @@
       <!-- Base -->
       <div class="section">
         <div class="section-title">Base</div>
+        <div class="field" title="Load a named preset (fills every section below with sensible values). You can still edit after loading.">
+          <label>Preset</label>
+          <select id="cfg-preset">
+            <option value="">— Custom —</option>
+            <option value="coastal-city">Coastal City</option>
+            <option value="mountain-valley">Mountain Valley</option>
+            <option value="archipelago">Archipelago</option>
+            <option value="wilderness">Wilderness Plateau</option>
+            <option value="cyber-canal">Cyber Canal City</option>
+          </select>
+        </div>
         <div class="seed-row">
           <input type="number" id="cfg-seed" value="42" placeholder="seed" title="Random seed — same seed + same config produces the same map">
           <button id="btn-random" class="secondary" title="Pick a random seed">RND</button>

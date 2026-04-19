@@ -668,6 +668,90 @@ const RIVER_PRESETS = {
   ravine:      { straight: 10,  meander: 60 },
 };
 
+// Whole-config presets — one click fills every section below.
+// Each returns a partial form-state to apply; keys match the control IDs.
+const MAP_PRESETS = {
+  'coastal-city': {
+    cells: 1200, relax: 3, coast: true, coastSide: 'south',
+    noise: 50, water: 30, roughness: 60,
+    rivers: [
+      { width: 'medium', origin: 'border', end: 'coast', preset: 'natural' },
+      { width: 'narrow', origin: 'inland', end: 'coast', preset: 'natural' },
+    ],
+    lakes: ['medium'],
+    highways: [{ from: 'north', to: 'south' }, { from: 'west', to: 'east' }],
+  },
+  'mountain-valley': {
+    cells: 1500, relax: 3, coast: false, coastSide: 'south',
+    noise: 60, water: 10, roughness: 100,
+    rivers: [
+      { width: 'medium', origin: 'inland', end: 'offmap', preset: 'natural' },
+      { width: 'narrow', origin: 'inland', end: 'lake',   preset: 'ravine' },
+    ],
+    lakes: ['large'],
+    highways: [{ from: 'west', to: 'east' }],
+  },
+  'archipelago': {
+    cells: 1800, relax: 3, coast: true, coastSide: 'south',
+    noise: 90, water: 70, roughness: 30,
+    rivers: [],
+    lakes: ['small', 'small'],
+    highways: [],
+  },
+  'wilderness': {
+    cells: 1200, relax: 3, coast: false, coastSide: 'south',
+    noise: 40, water: 15, roughness: 50,
+    rivers: [
+      { width: 'medium', origin: 'inland', end: 'offmap', preset: 'natural' },
+      { width: 'medium', origin: 'inland', end: 'offmap', preset: 'natural' },
+    ],
+    lakes: ['medium', 'medium'],
+    highways: [],
+  },
+  'cyber-canal': {
+    cells: 1500, relax: 3, coast: true, coastSide: 'south',
+    noise: 15, water: 35, roughness: 20,
+    rivers: [
+      { width: 'wide',   origin: 'border', end: 'coast', preset: 'concrete' },
+      { width: 'medium', origin: 'border', end: 'coast', preset: 'concrete' },
+    ],
+    lakes: ['large'],
+    highways: [{ from: 'north', to: 'south' }, { from: 'west', to: 'east' }],
+  },
+};
+
+function applyPreset(name) {
+  const p = MAP_PRESETS[name];
+  if (!p) return;
+  const setRange = (id, v) => {
+    const el_ = el(id); el_.value = v;
+    el_.dispatchEvent(new Event('input'));
+  };
+  setRange('cfg-cells',       p.cells);
+  setRange('cfg-relax',       p.relax);
+  setRange('cfg-coast-noise', p.noise);
+  setRange('cfg-water-ratio', p.water);
+  setRange('cfg-roughness',   p.roughness);
+  el('cfg-coast-en').checked = p.coast;
+  el('cfg-coast-side').value = p.coastSide;
+  el('coast-opts').style.opacity = p.coast ? '1' : '0.35';
+  el('cfg-rivers-en').checked = p.rivers.length > 0;
+  el('rivers-opts').style.opacity = p.rivers.length > 0 ? '1' : '0.35';
+  el('cfg-lakes-en').checked = p.lakes.length > 0;
+  el('lakes-opts').style.opacity = p.lakes.length > 0 ? '1' : '0.35';
+  el('cfg-highways-en').checked = p.highways.length > 0;
+  el('highways-opts').style.opacity = p.highways.length > 0 ? '1' : '0.35';
+  el('rivers-list').innerHTML = '';
+  el('lakes-list').innerHTML = '';
+  el('highways-list').innerHTML = '';
+  for (const r of p.rivers) {
+    const ps = RIVER_PRESETS[r.preset] || { straight: 0, meander: 0 };
+    addRiverRow(r.width, r.origin, r.end, ps.straight, ps.meander, r.preset || 'custom');
+  }
+  for (const size of p.lakes) addLakeRow(size);
+  for (const h of p.highways) addHighwayRow(h.from, h.to);
+}
+
 function readLakeList() {
   const rows = el('lakes-list').querySelectorAll('.dyn-row');
   return Array.from(rows).map(row => ({
@@ -801,6 +885,10 @@ el('btn-import').addEventListener('click', () => el('file-input').click());
 el('btn-add-river').addEventListener('click', () => addRiverRow());
 el('btn-add-lake').addEventListener('click', () => addLakeRow());
 el('btn-add-highway').addEventListener('click', () => addHighwayRow());
+
+el('cfg-preset').addEventListener('change', e => {
+  if (e.target.value) applyPreset(e.target.value);
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
