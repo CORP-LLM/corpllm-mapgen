@@ -69,6 +69,7 @@ func generateRivers(cells []Cell, edges []Edge, diag *voronoiDiagram, cfg *Confi
 		// Mark cells.
 		for _, cid := range path {
 			cells[cid].River = true
+			cells[cid].Terrain = "water"
 			used[cid] = true
 		}
 

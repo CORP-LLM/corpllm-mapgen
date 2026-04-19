@@ -43,6 +43,14 @@ func assignCoast(cells []Cell, cfg *Config, _ *rand.Rand) {
 
 		// Blend gradient and noise.
 		blend := gradient*(1-cfg.Terrain.CoastNoise) + noiseVal*cfg.Terrain.CoastNoise
+		// Hard cutoff: cells too far inland can never become water regardless of noise.
+		inlandCutoff := cfg.Terrain.WaterRatio + 0.3
+		if inlandCutoff > 0.75 {
+			inlandCutoff = 0.75
+		}
+		if gradient > inlandCutoff {
+			blend = 1.0
+		}
 		scored_[i] = scored{i, blend}
 	}
 

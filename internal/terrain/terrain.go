@@ -56,8 +56,17 @@ func Generate(cfg *Config) (*Terrain, error) {
 	var lakes []Lake
 	if cfg.Terrain.LakesEnabled && cfg.Terrain.LakeCount > 0 {
 		lakes = generateLakes(cells, diag, cfg, rng)
-		// Re-mark edges after lake water assignment.
-		edges = buildEdges(diag, cells)
+	}
+
+	// Rebuild edges after all water assignment (rivers + lakes changed cell terrain).
+	edges = buildEdges(diag, cells)
+	// Re-mark river edges lost during edge rebuild.
+	for _, r := range rivers {
+		for _, eid := range r.Path {
+			if eid >= 0 && eid < len(edges) {
+				edges[eid].River = true
+			}
+		}
 	}
 
 	// 9. Coastline extraction.
@@ -109,15 +118,21 @@ func buildEdges(diag *voronoiDiagram, cells []Cell) []Edge {
 }
 
 // extractCoastline marks coastline cells/edges and returns Coastline.
+// River cell borders are excluded — rivers are water but not coastline.
 func extractCoastline(cells []Cell, edges []Edge) Coastline {
 	var coastEdgeIDs []int
 	for i := range edges {
-		if edges[i].Type == "land-water" {
-			edges[i].Coastline = true
-			coastEdgeIDs = append(coastEdgeIDs, edges[i].ID)
-			cells[edges[i].Cells[0]].Coastline = true
-			cells[edges[i].Cells[1]].Coastline = true
+		if edges[i].Type != "land-water" {
+			continue
 		}
+		ca, cb := cells[edges[i].Cells[0]], cells[edges[i].Cells[1]]
+		if ca.River || cb.River {
+			continue
+		}
+		edges[i].Coastline = true
+		coastEdgeIDs = append(coastEdgeIDs, edges[i].ID)
+		cells[edges[i].Cells[0]].Coastline = true
+		cells[edges[i].Cells[1]].Coastline = true
 	}
 	return Coastline{Edges: coastEdgeIDs, Length: len(coastEdgeIDs)}
 }

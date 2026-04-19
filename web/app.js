@@ -106,11 +106,13 @@ function render() {
   }
   ctx.stroke();
 
-  // water-water
+  // water-water (skip river cell edges — handled by river batch)
   ctx.beginPath();
   ctx.strokeStyle = C.waterEdge;
   for (const e of terrain.edges) {
     if (e.coastline || e.type !== 'water-water') continue;
+    const ca = cellById.get(e.cells[0]), cb = cellById.get(e.cells[1]);
+    if (ca && ca.river || cb && cb.river) continue;
     ctx.moveTo(e.vertices[0].x, e.vertices[0].y);
     ctx.lineTo(e.vertices[1].x, e.vertices[1].y);
   }
@@ -131,7 +133,48 @@ function render() {
   }
 
   ctx.restore();
+  drawLegend();
   updateStatus();
+}
+
+function drawLegend() {
+  const items = [
+    { color: C.land,      label: 'LAND'  },
+    { color: C.water,     label: 'WATER' },
+    { color: C.lake,      label: 'LAKE'  },
+    { color: C.riverCell, label: 'RIVER' },
+  ];
+  const sw = 12, sh = 9;
+  const gap = 62;
+  const sx = 12;
+  const sy = canvas.height - 22;
+
+  ctx.font = '9px Courier New';
+  ctx.textBaseline = 'middle';
+
+  items.forEach((item, i) => {
+    const x = sx + i * gap;
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, sy, sw, sh);
+    ctx.strokeStyle = '#2a2a44';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(x, sy, sw, sh);
+    ctx.fillStyle = '#606078';
+    ctx.fillText(item.label, x + sw + 4, sy + sh / 2);
+  });
+
+  // Coast — line sample
+  const cx = sx + items.length * gap;
+  ctx.strokeStyle = C.coast;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, sy + sh / 2);
+  ctx.lineTo(cx + sw, sy + sh / 2);
+  ctx.stroke();
+  ctx.fillStyle = '#606078';
+  ctx.fillText('COAST', cx + sw + 4, sy + sh / 2);
+
+  ctx.textBaseline = 'alphabetic';
 }
 
 function buildLakeSet() {
